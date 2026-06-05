@@ -12,8 +12,8 @@ COPY package*.json tsconfig.json ./
 RUN npm ci
 
 # 拷贝源码并编译
-COPY src ./src
-RUN npm run build
+COPY src/ ./src/
+RUN npm run build && echo "build-verified"
 
 # ===========================
 # 阶段 2：生产运行
