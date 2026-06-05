@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bijing
+      POSTGRES_PASSWORD: bijing123
+      POSTGRES_DB: bijing
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bijing"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://bijing:bijing123@db:5432/bijing
+      KIMI_API_KEY: ${KIMI_API_KEY}
+      KIMI_API_URL: ${KIMI_API_URL:-https://api.moonshot.cn/v1/chat/completions}
+      KIMI_MODEL: ${KIMI_MODEL:-moonshot-v1-8k}
+      PORT: 3000
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+    command: npm run dev
+
+volumes:
+  pgdata:

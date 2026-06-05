@@ -1,0 +1,71 @@
+# 笔境 · 统一 Docker Compose 编排
+# 使用方式：
+#   dev  : docker compose -p bijing-dev --env-file .env.dev up -d --build
+#   main : docker compose -p bijing-main --env-file .env.main up -d --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-bijing}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-bijing123}
+      POSTGRES_DB: ${DB_NAME:-bijing}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../backend/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-bijing}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bijing-net
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL}
+      KIMI_API_KEY: ${KIMI_API_KEY}
+      KIMI_API_URL: ${KIMI_API_URL:-https://api.moonshot.cn/v1/chat/completions}
+      KIMI_MODEL: ${KIMI_MODEL:-moonshot-v1-8k}
+      ENABLE_FEEDBACK: ${ENABLE_FEEDBACK:-false}
+      NODE_ENV: ${NODE_ENV:-production}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - bijing-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_ENABLE_FEEDBACK: ${ENABLE_FEEDBACK:-false}
+    ports:
+      - "${HOST_PORT:-8080}:80"
+    depends_on:
+      - api
+    networks:
+      - bijing-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+volumes:
+  pgdata:
+
+networks:
+  bijing-net:
+    driver: bridge

@@ -1,0 +1,216 @@
+import { Router, Request, Response } from 'express';
+import { success, error } from '../middleware/response';
+import * as storyService from '../services/storyService';
+import * as chapterService from '../services/chapterService';
+import * as likeService from '../services/likeService';
+import * as aiService from '../services/aiService';
+import { StoryStyle } from '../types';
+
+const router = Router();
+
+const VALID_STYLES: StoryStyle[] = ['古风', '科幻', '悬疑', '言情', '职场', '无限流', '末日'];
+
+// POST /api/stories — 创建新故事
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const { title, setting, style } = req.body;
+    const user = req.currentUser;
+
+    if (!user) {
+      error(res, 401, 'UNAUTHORIZED', 'Missing anonymous user');
+      return;
+    }
+    if (!title || !setting || !style) {
+      error(res, 400, 'INVALID_INPUT', 'Missing required fields: title, setting, style');
+      return;
+    }
+    if (!VALID_STYLES.includes(style)) {
+      error(res, 400, 'INVALID_STYLE', `Style must be one of: ${VALID_STYLES.join(', ')}`);
+      return;
+    }
+
+    const story = await storyService.createStory(title, setting, style, user.id);
+    success(res, story);
+  } catch (err) {
+    console.error('Create story error:', err);
+    error(res, 500, 'CREATE_FAILED', 'Failed to create story');
+  }
+});
+
+// GET /api/stories — 获取"我的故事"列表
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const user = req.currentUser;
+    if (!user) {
+      error(res, 401, 'UNAUTHORIZED', 'Missing anonymous user');
+      return;
+    }
+
+    const page = parseInt(req.query.page as string) || 1;
+    const pageSize = parseInt(req.query.pageSize as string) || 20;
+
+    const result = await storyService.getStoriesByAuthor(user.id, { page, pageSize });
+    success(res, { stories: result.stories, total: result.total }, { page, pageSize });
+  } catch (err) {
+    console.error('List stories error:', err);
+    error(res, 500, 'LIST_FAILED', 'Failed to list stories');
+  }
+});
+
+// GET /api/stories/random-prompt — 随机设定（必须在 /:id 之前）
+router.get('/random-prompt', (_req: Request, res: Response) => {
+  const prompt = aiService.getRandomPrompt();
+  success(res, { prompt });
+});
+
+// GET /api/stories/:id — 获取故事详情和全部章节
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const story = await storyService.getStoryById(req.params.id);
+    if (!story) {
+      error(res, 404, 'NOT_FOUND', 'Story not found');
+      return;
+    }
+
+    await storyService.incrementReadCount(story.id);
+    success(res, story);
+  } catch (err) {
+    console.error('Get story error:', err);
+    error(res, 500, 'FETCH_FAILED', 'Failed to fetch story');
+  }
+});
+
+// DELETE /api/stories/:id — 删除故事
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const user = req.currentUser;
+    if (!user) {
+      error(res, 401, 'UNAUTHORIZED', 'Missing anonymous user');
+      return;
+    }
+
+    const deleted = await storyService.deleteStory(req.params.id, user.id);
+    if (!deleted) {
+      error(res, 404, 'NOT_FOUND', 'Story not found or not authorized');
+      return;
+    }
+
+    success(res, { deleted: true });
+  } catch (err) {
+    console.error('Delete story error:', err);
+    error(res, 500, 'DELETE_FAILED', 'Failed to delete story');
+  }
+});
+
+// POST /api/stories/:id/chapters — 生成下一章
+router.post('/:id/chapters', async (req: Request, res: Response) => {
+  try {
+    const { previousChapterId, userChoice } = req.body;
+    const storyId = req.params.id;
+
+    const story = await storyService.getStoryById(storyId);
+    if (!story) {
+      error(res, 404, 'NOT_FOUND', 'Story not found');
+      return;
+    }
+
+    let previousChapter = null;
+    if (previousChapterId) {
+      previousChapter = await chapterService.getChapterById(previousChapterId);
+      if (!previousChapter || previousChapter.story_id !== storyId) {
+        error(res, 400, 'INVALID_CHAPTER', 'Previous chapter not found');
+        return;
+      }
+    }
+
+    // 调用 AI 生成下一章
+    const generated = await aiService.generateNextChapter(
+      story.title,
+      story.setting,
+      story.style,
+      previousChapter,
+      userChoice !== undefined ? parseInt(userChoice) : null
+    );
+
+    const nextSequence = await chapterService.getNextSequence(storyId);
+
+    const chapter = await chapterService.createChapter(
+      storyId,
+      nextSequence,
+      generated.title,
+      generated.content,
+      generated.choices,
+      generated.worldState
+    );
+
+    success(res, chapter);
+  } catch (err) {
+    console.error('Generate chapter error:', err);
+    error(res, 500, 'GENERATE_FAILED', 'Failed to generate chapter');
+  }
+});
+
+// POST /api/stories/:id/regenerate — 回退到某章重新生成
+router.post('/:id/regenerate', async (req: Request, res: Response) => {
+  try {
+    const { chapterId } = req.body;
+    const storyId = req.params.id;
+    const user = req.currentUser;
+
+    if (!user) {
+      error(res, 401, 'UNAUTHORIZED', 'Missing anonymous user');
+      return;
+    }
+    if (!chapterId) {
+      error(res, 400, 'INVALID_INPUT', 'Missing chapterId');
+      return;
+    }
+
+    const rolledBack = await storyService.rollbackToChapter(storyId, chapterId);
+    if (!rolledBack) {
+      error(res, 404, 'NOT_FOUND', 'Chapter not found in this story');
+      return;
+    }
+
+    success(res, { regenerated: true, rolledBackTo: chapterId });
+  } catch (err) {
+    console.error('Regenerate error:', err);
+    error(res, 500, 'REGENERATE_FAILED', 'Failed to regenerate');
+  }
+});
+
+// POST /api/stories/:id/like — 点赞
+router.post('/:id/like', async (req: Request, res: Response) => {
+  try {
+    const user = req.currentUser;
+    if (!user) {
+      error(res, 401, 'UNAUTHORIZED', 'Missing anonymous user');
+      return;
+    }
+
+    const result = await likeService.toggleLike(req.params.id, user.id);
+    success(res, result);
+  } catch (err) {
+    console.error('Toggle like error:', err);
+    error(res, 500, 'LIKE_FAILED', 'Failed to toggle like');
+  }
+});
+
+// POST /api/stories/:id/favorite — 收藏
+router.post('/:id/favorite', async (req: Request, res: Response) => {
+  try {
+    const user = req.currentUser;
+    if (!user) {
+      error(res, 401, 'UNAUTHORIZED', 'Missing anonymous user');
+      return;
+    }
+
+    const result = await likeService.toggleFavorite(req.params.id, user.id);
+    success(res, result);
+  } catch (err) {
+    console.error('Toggle favorite error:', err);
+    error(res, 500, 'FAVORITE_FAILED', 'Failed to toggle favorite');
+  }
+});
+
+export default router;
