@@ -99,7 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_share_links_story_id ON share_links(story_id);
 CREATE TABLE IF NOT EXISTS feedback (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  type VARCHAR(32) NOT NULL CHECK (type IN ('bug', 'feature', 'ux', 'other')),
+  type VARCHAR(32) NOT NULL CHECK (type IN ('bug', 'feature', 'experience', 'other')),
   content TEXT NOT NULL,
   screenshot TEXT,
   page_path TEXT,

@@ -66,9 +66,16 @@ interface KimiResponse {
   };
 }
 
+class KimiApiError extends Error {
+  constructor(message: string, public status?: number) {
+    super(message);
+    this.name = 'KimiApiError';
+  }
+}
+
 async function callKimi(messages: KimiMessage[], temperature = 0.8): Promise<string> {
   if (!KIMI_API_KEY) {
-    throw new Error('KIMI_API_KEY not configured');
+    throw new KimiApiError('KIMI_API_KEY not configured');
   }
 
   // Rate limit
@@ -79,24 +86,34 @@ async function callKimi(messages: KimiMessage[], temperature = 0.8): Promise<str
   }
   lastRequestTime = Date.now();
 
-  const response = await axios.post<KimiResponse>(
-    KIMI_API_URL,
-    {
-      model: KIMI_MODEL,
-      messages,
-      temperature,
-      max_tokens: 4000,
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${KIMI_API_KEY}`,
+  try {
+    const response = await axios.post<KimiResponse>(
+      KIMI_API_URL,
+      {
+        model: KIMI_MODEL,
+        messages,
+        temperature,
+        max_tokens: 4000,
       },
-      timeout: 60000,
-    }
-  );
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${KIMI_API_KEY}`,
+        },
+        timeout: 60000,
+      }
+    );
 
-  return response.data.choices[0]?.message?.content || '';
+    return response.data.choices[0]?.message?.content || '';
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status;
+      if (status === 401 || status === 403 || status === 429) {
+        throw new KimiApiError(`Moonshot API returned ${status}`, status);
+      }
+    }
+    throw err;
+  }
 }
 
 // ===== 风格描述映射 =====
@@ -110,6 +127,54 @@ const styleDescriptions: Record<StoryStyle, string> = {
   '末日': '末世生存背景，资源匮乏，人性考验，有压迫感和求生欲',
 };
 
+function generateMockChapter(
+  storyTitle: string,
+  storySetting: string,
+  style: StoryStyle,
+  previousChapter: Chapter | null,
+  userChoiceIndex: number | null
+): { title: string; content: string; choices: ChoiceOption[]; worldState: WorldState } {
+  const styleLabel: Record<StoryStyle, string> = {
+    '古风': '古风',
+    '科幻': '科幻',
+    '悬疑': '悬疑',
+    '言情': '言情',
+    '职场': '职场',
+    '无限流': '无限流',
+    '末日': '末日',
+  };
+
+  let title: string;
+  let content: string;
+
+  if (previousChapter) {
+    const choiceText = userChoiceIndex !== null
+      ? previousChapter.choices[userChoiceIndex]?.text || '继续前行'
+      : '继续前行';
+    title = `${previousChapter.title} · 续`;
+    content = `你选择了"${choiceText}"。\n\n在${storySetting}的背景下，故事继续向前推进。主角一行人来到了新的场景，周围的气氛变得越来越紧张。远处传来的异响打破了短暂的平静，新的挑战正在酝酿。\n\n（当前为模拟生成章节：Moonshot API 暂时不可用，系统已自动降级到本地 mock。）`;
+  } else {
+    title = `${storyTitle} · 序章`;
+    content = `欢迎来到《${storyTitle}》。\n\n${storySetting}\n\n这是一个${styleLabel[style]}风格的故事。你的每一次选择都会影响剧情走向。现在，故事的第一幕缓缓拉开，主角的命运之轮开始转动。\n\n（当前为模拟生成章节：Moonshot API 暂时不可用，系统已自动降级到本地 mock。）`;
+  }
+
+  return {
+    title,
+    content,
+    choices: [
+      { id: '1', text: '选项 A：谨慎行事，观察局势' },
+      { id: '2', text: '选项 B：主动出击，把握先机' },
+      { id: '3', text: '选项 C：寻求帮助，联合他人' },
+    ],
+    worldState: previousChapter?.world_state || {
+      characters: [{ name: '主角', relationship: '自己', status: '踏上旅程' }],
+      keyEvents: ['故事开始'],
+      currentScene: storySetting,
+      atmosphere: styleLabel[style],
+    },
+  };
+}
+
 // ===== 生成下一章 =====
 export async function generateNextChapter(
   storyTitle: string,
@@ -118,6 +183,9 @@ export async function generateNextChapter(
   previousChapter: Chapter | null,
   userChoiceIndex: number | null
 ): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState }> {
+  if (MOCK_MODE) {
+    return generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
+  }
 
   const styleDesc = styleDescriptions[style];
 
@@ -179,10 +247,18 @@ ${JSON.stringify(previousChapter.world_state, null, 2)}
 你的输出必须是严格的 JSON 格式，不要有任何 markdown 代码块标记或额外文字。
 确保 JSON 格式合法，可以直接被 JSON.parse 解析。`;
 
-  const rawResponse = await callKimi([
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt },
-  ]);
+  let rawResponse: string;
+  try {
+    rawResponse = await callKimi([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ]);
+  } catch (err) {
+    if (err instanceof KimiApiError) {
+      return generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
+    }
+    throw err;
+  }
 
   // 解析响应
   const parsed = safeParseJSON(rawResponse) as Record<string, unknown> | null;

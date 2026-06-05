@@ -8,9 +8,12 @@ import {
   Clock,
   Grid3x3,
   Share2,
+  X,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { genreConfigs } from '../data/mock'
-import { getSquareStories, toggleLike, toggleBookmark } from '../api/client'
+import { getSquareStories, toggleLike, toggleBookmark, createShareLink } from '../api/client'
 import type { Story, StoryGenre } from '../types'
 
 type TabType = 'hot' | 'latest' | 'genre'
@@ -19,6 +22,9 @@ export default function CommunityPage() {
   const [activeTab, setActiveTab] = useState<TabType>('hot')
   const [selectedGenre, setSelectedGenre] = useState<StoryGenre | null>(null)
   const [showShare, setShowShare] = useState<string | null>(null)
+  const [shareUrl, setShareUrl] = useState('')
+  const [shareCode, setShareCode] = useState('')
+  const [copied, setCopied] = useState(false)
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -79,6 +85,37 @@ export default function CommunityPage() {
       )
     } catch {
       // silently fail for bookmark
+    }
+  }
+
+  const handleShare = async (storyId: string) => {
+    try {
+      const { shortUrl, code } = await createShareLink(storyId)
+      setShareUrl(shortUrl)
+      setShareCode(code)
+      setShowShare(storyId)
+      setCopied(false)
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(shortUrl)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }
+    } catch {
+      const url = `${window.location.origin}/reader/${storyId}`
+      setShareUrl(url)
+      setShareCode('')
+      setShowShare(storyId)
+    }
+  }
+
+  const handleCopy = async () => {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // ignore
     }
   }
 
@@ -194,29 +231,60 @@ export default function CommunityPage() {
                 index={idx}
                 onLike={() => handleLike(story)}
                 onBookmark={() => handleBookmark(story)}
-                onShare={() => {
-                  setShowShare(story.id)
-                  setTimeout(() => setShowShare(null), 2000)
-                }}
+                onShare={() => handleShare(story.id)}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* Share Toast */}
+      {/* Share Panel */}
       <AnimatePresence>
         {showShare && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-bg-elevated border border-border
-                       px-4 py-3 rounded-2xl flex items-center gap-3 shadow-lg"
-          >
-            <Share2 size={16} className="text-accent" />
-            <span className="text-sm text-text-secondary">链接已复制到剪贴板</span>
-          </motion.div>
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-50"
+              onClick={() => setShowShare(null)}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 z-50 bg-bg-elevated rounded-t-3xl px-5 pt-5 pb-8"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold text-text-primary">分享故事</h3>
+                <button
+                  onClick={() => setShowShare(null)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-bg-card text-text-secondary active:bg-bg-hover transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-1 p-3 rounded-xl bg-bg-card border border-border text-sm text-text-secondary truncate">
+                  {shareUrl}
+                </div>
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleCopy}
+                  className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-accent text-white text-sm font-medium active:bg-accent-hover transition-colors"
+                >
+                  {copied ? <Check size={16} /> : <Copy size={16} />}
+                  {copied ? '已复制' : '复制'}
+                </motion.button>
+              </div>
+              {shareCode && (
+                <p className="text-xs text-text-muted">
+                  分享码：{shareCode}
+                </p>
+              )}
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>

@@ -5,13 +5,13 @@ import { FeedbackType, FeedbackStatus } from '../types';
 
 const router = Router();
 
-const VALID_TYPES: FeedbackType[] = ['bug', 'feature', 'ux', 'other'];
+const VALID_TYPES: FeedbackType[] = ['bug', 'feature', 'experience', 'other'];
 const VALID_STATUSES: FeedbackStatus[] = ['open', 'reviewing', 'accepted', 'rejected', 'resolved'];
 
 // POST /api/feedback — 提交用户反馈
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { type, content, screenshot, pagePath, deviceInfo } = req.body;
+    const { type, content, screenshot, routePath, deviceInfo } = req.body;
 
     if (!type || !content) {
       error(res, 400, 'INVALID_INPUT', 'Missing required fields: type, content');
@@ -37,7 +37,7 @@ router.post('/', async (req: Request, res: Response) => {
       type,
       content,
       screenshot,
-      pagePath,
+      routePath,
       deviceInfo,
       req.currentUser?.id
     );

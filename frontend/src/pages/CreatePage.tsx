@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { useStoryStore } from '../stores/storyStore'
 import { genreConfigs, promptSuggestions } from '../data/mock'
-import { createStory } from '../api/client'
+import { createStory, getRandomPrompt } from '../api/client'
 import type { StoryGenre } from '../types'
 
 const genreIcons: Record<StoryGenre, typeof BookOpen> = {
@@ -34,6 +34,7 @@ export default function CreatePage() {
   const { draftPrompt, draftGenre, setDraftPrompt, setDraftGenre } = useStoryStore()
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
+  const [isRandomLoading, setIsRandomLoading] = useState(false)
 
   const handleGenreSelect = useCallback(
     (genre: StoryGenre) => {
@@ -50,10 +51,20 @@ export default function CreatePage() {
     [setDraftPrompt, setDraftGenre]
   )
 
-  const handleRandom = useCallback(() => {
-    const random = promptSuggestions[Math.floor(Math.random() * promptSuggestions.length)]
-    setDraftPrompt(random.description)
-    setDraftGenre(random.genre)
+  const handleRandom = useCallback(async () => {
+    setIsRandomLoading(true)
+    try {
+      const random = await getRandomPrompt()
+      setDraftPrompt(random.description)
+      setDraftGenre(random.genre)
+    } catch {
+      // fallback to local mock
+      const fallback = promptSuggestions[Math.floor(Math.random() * promptSuggestions.length)]
+      setDraftPrompt(fallback.description)
+      setDraftGenre(fallback.genre)
+    } finally {
+      setIsRandomLoading(false)
+    }
   }, [setDraftPrompt, setDraftGenre])
 
   const handleCreate = useCallback(async () => {
@@ -99,10 +110,15 @@ export default function CreatePage() {
           <div className="absolute bottom-3 right-3 flex gap-2">
             <button
               onClick={handleRandom}
+              disabled={isRandomLoading}
               className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-bg-hover text-xs text-text-secondary
-                         active:bg-bg-pressed transition-colors"
+                         active:bg-bg-pressed transition-colors disabled:opacity-50"
             >
-              <Shuffle size={12} />
+              {isRandomLoading ? (
+                <span className="w-3 h-3 border-2 border-text-secondary/30 border-t-text-secondary rounded-full animate-spin" />
+              ) : (
+                <Shuffle size={12} />
+              )}
               随机一个
             </button>
           </div>

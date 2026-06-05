@@ -218,6 +218,26 @@ export async function toggleBookmark(storyId: string): Promise<{ bookmarked: boo
   return request(`/api/stories/${storyId}/favorite`, { method: 'POST' });
 }
 
+// ===== 随机设定 API =====
+
+export async function getRandomPrompt(): Promise<{ description: string; genre: StoryGenre | null }> {
+  const data = await request<{ prompt: string }>('/api/stories/random-prompt');
+  return { description: data.prompt, genre: null };
+}
+
+// ===== 分享 API =====
+
+export async function createShareLink(storyId: string): Promise<{ shortUrl: string; code: string }> {
+  const data = await request<{ code: string; url: string }>('/api/share', {
+    method: 'POST',
+    body: JSON.stringify({ storyId }),
+  });
+  const fullUrl = data.url.startsWith('http')
+    ? data.url
+    : `${window.location.origin}${data.url}`;
+  return { shortUrl: fullUrl, code: data.code };
+}
+
 // ===== 反馈 API =====
 
 export async function submitFeedback(payload: {

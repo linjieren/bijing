@@ -5,7 +5,7 @@ export async function createFeedback(
   type: FeedbackType,
   content: string,
   screenshot: string | undefined,
-  pagePath: string | undefined,
+  routePath: string | undefined,
   deviceInfo: DeviceInfo | undefined,
   userId: string | undefined
 ): Promise<Feedback> {
@@ -13,7 +13,7 @@ export async function createFeedback(
     `INSERT INTO feedback (type, content, screenshot, page_path, device_info, user_id)
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [type, content, screenshot || null, pagePath || null, deviceInfo ? JSON.stringify(deviceInfo) : null, userId || null]
+    [type, content, screenshot || null, routePath || null, deviceInfo ? JSON.stringify(deviceInfo) : null, userId || null]
   );
   return result.rows[0];
 }

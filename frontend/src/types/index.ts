@@ -100,6 +100,19 @@ export interface PromptSuggestion {
   genre: StoryGenre;
 }
 
+// 随机设定
+export interface RandomPrompt {
+  title: string;
+  description: string;
+  genre: StoryGenre;
+}
+
+// 分享链接
+export interface ShareLink {
+  shortUrl: string;
+  code: string;
+}
+
 // 反馈
 export type FeedbackType = 'bug' | 'feature' | 'experience' | 'other';
 

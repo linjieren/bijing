@@ -99,7 +99,7 @@ export interface ShareLink {
 
 // ===== 反馈 =====
 
-export type FeedbackType = 'bug' | 'feature' | 'ux' | 'other';
+export type FeedbackType = 'bug' | 'feature' | 'experience' | 'other';
 export type FeedbackStatus = 'open' | 'reviewing' | 'accepted' | 'rejected' | 'resolved';
 
 export interface DeviceInfo {
