@@ -254,7 +254,7 @@ export async function publishStory(storyId: string): Promise<Story> {
 
 // ===== 认证 API =====
 
-export async function sendVerificationCode(phone: string): Promise<{ sent: boolean }> {
+export async function sendVerificationCode(phone: string): Promise<{ sent: boolean; mockCode?: string }> {
   return request('/api/auth/send-code', {
     method: 'POST',
     body: JSON.stringify({ phone }),

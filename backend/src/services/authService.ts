@@ -28,9 +28,9 @@ export async function sendVerificationCode(phone: string): Promise<{ sent: boole
 
   const sent = await sendSms(phone, code);
 
-  // 非生产环境把 code 也返回，方便测试
-  const isDev = process.env.NODE_ENV !== 'production';
-  return { sent, ...(isDev ? { mockCode: code } : {}) };
+  // 未接入真实 SMS 服务商时把 code 也返回，方便测试
+  const hasSmsProvider = !!process.env.SMS_PROVIDER;
+  return { sent, ...(!hasSmsProvider ? { mockCode: code } : {}) };
 }
 
 export async function verifyCode(phone: string, code: string): Promise<boolean> {

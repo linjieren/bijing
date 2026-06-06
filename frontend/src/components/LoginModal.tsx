@@ -40,8 +40,11 @@ export default function LoginModal({ open, onClose, onSuccess }: LoginModalProps
     setError('')
     setLoading(true)
     try {
-      await sendVerificationCode(phone)
+      const result = await sendVerificationCode(phone)
       setCountdown(60)
+      if (result.mockCode) {
+        setCode(result.mockCode)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '发送失败')
     } finally {
