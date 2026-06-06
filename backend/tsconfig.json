@@ -1,5 +1,5 @@
 {
-  "_cacheBust": "v5",
+  "_cacheBust": "v6",
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
