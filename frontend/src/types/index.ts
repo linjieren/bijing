@@ -24,6 +24,8 @@ export interface Story {
   coverImage?: string;
   authorId: string;
   authorName: string;
+  authorNickname?: string;
+  authorAvatarColor?: string;
   currentChapter: number;
   totalChapters: number;
   progress: number; // 0-100

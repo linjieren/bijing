@@ -57,6 +57,38 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/stories/liked — 获取我喜欢的故事列表
+router.get('/liked', async (req: Request, res: Response) => {
+  try {
+    const user = req.currentUser;
+    if (!user) {
+      error(res, 401, 'UNAUTHORIZED', 'Missing anonymous user');
+      return;
+    }
+    const stories = await likeService.getLikedStories(user.id);
+    success(res, stories);
+  } catch (err) {
+    console.error('List liked stories error:', err);
+    error(res, 500, 'LIST_FAILED', 'Failed to list liked stories');
+  }
+});
+
+// GET /api/stories/favorited — 获取我收藏的故事列表
+router.get('/favorited', async (req: Request, res: Response) => {
+  try {
+    const user = req.currentUser;
+    if (!user) {
+      error(res, 401, 'UNAUTHORIZED', 'Missing anonymous user');
+      return;
+    }
+    const stories = await likeService.getFavoritedStories(user.id);
+    success(res, stories);
+  } catch (err) {
+    console.error('List favorited stories error:', err);
+    error(res, 500, 'LIST_FAILED', 'Failed to list favorited stories');
+  }
+});
+
 // GET /api/stories/random-prompt — 随机设定（必须在 /:id 之前）
 router.get('/random-prompt', (_req: Request, res: Response) => {
   const prompt = aiService.getRandomPrompt();

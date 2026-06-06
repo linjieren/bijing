@@ -68,6 +68,8 @@ export interface BackendStory {
   setting: string;
   style: string;
   author_id: string;
+  author_nickname?: string;
+  author_avatar_color?: string;
   status: 'ongoing' | 'completed' | 'abandoned';
   likes_count: number;
   favorites_count: number;
@@ -104,7 +106,9 @@ function mapBackendStory(bs: BackendStory): Story {
     summary: bs.setting,
     genre: STYLE_TO_GENRE[bs.style] || 'ancient',
     authorId: bs.author_id,
-    authorName: '匿名读者',
+    authorName: bs.author_nickname || '匿名读者',
+    authorNickname: bs.author_nickname,
+    authorAvatarColor: bs.author_avatar_color,
     currentChapter: Math.max(1, currentChapter),
     totalChapters: Math.max(1, totalChapters),
     progress: Math.min(100, progress),
@@ -169,6 +173,16 @@ export async function createStory(payload: { prompt: string; genre: StoryGenre }
 export async function getStories(): Promise<Story[]> {
   const data = await request<{ stories: BackendStory[]; total: number }>('/api/stories');
   return data.stories.map(mapBackendStory);
+}
+
+export async function getLikedStories(): Promise<Story[]> {
+  const data = await request<BackendStory[]>('/api/stories/liked');
+  return data.map(mapBackendStory);
+}
+
+export async function getFavoritedStories(): Promise<Story[]> {
+  const data = await request<BackendStory[]>('/api/stories/favorited');
+  return data.map(mapBackendStory);
 }
 
 export async function getStoryDetail(storyId: string): Promise<{ story: Story; chapters: Chapter[] }> {

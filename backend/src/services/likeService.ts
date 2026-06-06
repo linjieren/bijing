@@ -84,3 +84,29 @@ export async function hasFavorited(storyId: string, userId: string): Promise<boo
   );
   return result.rows.length > 0;
 }
+
+export async function getLikedStories(userId: string): Promise<Array<Record<string, unknown>>> {
+  const result = await query(
+    `SELECT s.*, u.nickname as author_nickname, u.avatar_color as author_avatar_color
+     FROM stories s
+     JOIN likes l ON s.id = l.story_id
+     JOIN users u ON s.author_id = u.id
+     WHERE l.user_id = $1
+     ORDER BY l.created_at DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
+export async function getFavoritedStories(userId: string): Promise<Array<Record<string, unknown>>> {
+  const result = await query(
+    `SELECT s.*, u.nickname as author_nickname, u.avatar_color as author_avatar_color
+     FROM stories s
+     JOIN favorites f ON s.id = f.story_id
+     JOIN users u ON s.author_id = u.id
+     WHERE f.user_id = $1
+     ORDER BY f.created_at DESC`,
+    [userId]
+  );
+  return result.rows;
+}

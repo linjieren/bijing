@@ -4,6 +4,7 @@ import CreatePage from './pages/CreatePage'
 import ReaderPage from './pages/ReaderPage'
 import MyStoriesPage from './pages/MyStoriesPage'
 import CommunityPage from './pages/CommunityPage'
+import ProfilePage from './pages/ProfilePage'
 import FeedbackButton from './components/FeedbackButton'
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
           <Route path="/" element={<CreatePage />} />
           <Route path="/stories" element={<MyStoriesPage />} />
           <Route path="/community" element={<CommunityPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
         </Route>
         <Route path="/reader/:storyId" element={<ReaderPage />} />
       </Routes>

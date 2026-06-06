@@ -325,9 +325,17 @@ function StoryCard({
         <h3 className="text-sm font-medium text-text-primary line-clamp-1 mb-1">
           {story.title}
         </h3>
-        <p className="text-[10px] text-text-muted mb-2">
-          {story.authorName}
-        </p>
+        <div className="flex items-center gap-1.5 mb-2">
+          <div
+            className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
+            style={{ backgroundColor: story.authorAvatarColor || '#8B5CF6' }}
+          >
+            {(story.authorNickname || story.authorName || '匿')[0]}
+          </div>
+          <p className="text-[10px] text-text-muted">
+            {story.authorNickname || story.authorName}
+          </p>
+        </div>
 
         {/* Tags */}
         <div className="flex items-center gap-1.5 mb-3">

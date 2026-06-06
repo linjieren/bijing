@@ -1,11 +1,11 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, BookOpen, Compass } from 'lucide-react';
+import { Compass, PlusCircle, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const navItems = [
-  { path: '/', icon: Home, label: '创作' },
-  { path: '/stories', icon: BookOpen, label: '我的故事' },
   { path: '/community', icon: Compass, label: '广场' },
+  { path: '/', icon: PlusCircle, label: '创作' },
+  { path: '/profile', icon: User, label: '我的' },
 ];
 
 export default function BottomNav() {
