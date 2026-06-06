@@ -87,6 +87,17 @@ export async function updateStoryStatus(
   return result.rows[0] || null;
 }
 
+export async function publishStory(
+  id: string,
+  authorId: string
+): Promise<Story | null> {
+  const result = await query<Story>(
+    "UPDATE stories SET is_public = TRUE WHERE id = $1 AND author_id = $2 RETURNING *",
+    [id, authorId]
+  );
+  return result.rows[0] || null;
+}
+
 export async function incrementReadCount(storyId: string): Promise<void> {
   await query(
     'UPDATE stories SET reads_count = reads_count + 1 WHERE id = $1',

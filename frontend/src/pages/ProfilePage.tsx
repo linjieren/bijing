@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  User,
   BookOpen,
   Heart,
   Bookmark,
@@ -10,6 +9,9 @@ import {
   Trash2,
   Clock,
   BookX,
+  Upload,
+  Smartphone,
+  CheckCircle2,
 } from 'lucide-react'
 import { genreConfigs } from '../data/mock'
 import {
@@ -17,7 +19,10 @@ import {
   getLikedStories,
   getFavoritedStories,
   deleteStory as apiDeleteStory,
+  publishStory,
+  getCurrentUser,
 } from '../api/client'
+import LoginModal from '../components/LoginModal'
 import type { Story } from '../types'
 
 type TabKey = 'stories' | 'liked' | 'favorited'
@@ -41,6 +46,10 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [loginOpen, setLoginOpen] = useState(false)
+  const [userPhone, setUserPhone] = useState<string | undefined>(undefined)
+  const [userNickname, setUserNickname] = useState<string | undefined>(undefined)
+  const [publishId, setPublishId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -48,15 +57,21 @@ export default function ProfilePage() {
       setLoading(true)
       setError('')
       try {
-        let list: Story[] = []
-        if (activeTab === 'stories') {
-          list = await getStories()
-        } else if (activeTab === 'liked') {
-          list = await getLikedStories()
-        } else {
-          list = await getFavoritedStories()
+        const [user, list] = await Promise.all([
+          getCurrentUser().catch(() => null),
+          activeTab === 'stories'
+            ? getStories()
+            : activeTab === 'liked'
+            ? getLikedStories()
+            : getFavoritedStories(),
+        ])
+        if (!cancelled) {
+          if (user) {
+            setUserPhone(user.phone || undefined)
+            setUserNickname(user.nickname || undefined)
+          }
+          setStories(list)
         }
-        if (!cancelled) setStories(list)
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : '加载失败')
       } finally {
@@ -79,6 +94,38 @@ export default function ProfilePage() {
     setDeleteId(null)
   }
 
+  const handlePublish = async (storyId: string) => {
+    if (!userPhone) {
+      setLoginOpen(true)
+      setPublishId(storyId)
+      return
+    }
+    try {
+      await publishStory(storyId)
+      setStories((prev) =>
+        prev.map((s) => (s.id === storyId ? { ...s, isPublic: true } : s))
+      )
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '发布失败')
+    }
+  }
+
+  const handleLoginSuccess = () => {
+    setLoginOpen(false)
+    // 重新拉取用户信息
+    getCurrentUser()
+      .then((u) => {
+        setUserPhone(u.phone || undefined)
+        setUserNickname(u.nickname || undefined)
+        // 如果是因为点击发布而弹出的登录，继续发布
+        if (publishId) {
+          handlePublish(publishId)
+          setPublishId(null)
+        }
+      })
+      .catch(() => {})
+  }
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
     return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
@@ -88,14 +135,37 @@ export default function ProfilePage() {
     <div className="min-h-dvh bg-bg">
       {/* Header */}
       <header className="px-5 pt-8 pb-4">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-14 h-14 rounded-full bg-accent/15 flex items-center justify-center">
-            <User size={24} className="text-accent" />
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center text-white text-lg font-bold shrink-0"
+              style={{ backgroundColor: '#8B5CF6' }}
+            >
+              {(userNickname || '我')[0]}
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-text-primary">
+                {userNickname || '我的'}
+              </h1>
+              {userPhone ? (
+                <p className="text-xs text-text-muted mt-0.5 flex items-center gap-1">
+                  <CheckCircle2 size={10} className="text-success" />
+                  已绑定 {userPhone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}
+                </p>
+              ) : (
+                <p className="text-xs text-text-muted mt-0.5">游客模式</p>
+              )}
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-text-primary">我的</h1>
-            <p className="text-xs text-text-muted mt-0.5">管理你的创作与互动</p>
-          </div>
+          {!userPhone && (
+            <button
+              onClick={() => setLoginOpen(true)}
+              className="flex items-center gap-1 px-3 py-2 rounded-xl bg-accent text-white text-xs font-medium active:bg-accent-hover transition-colors"
+            >
+              <Smartphone size={13} />
+              绑定手机号
+            </button>
+          )}
         </div>
 
         {/* Tabs */}
@@ -158,6 +228,7 @@ export default function ProfilePage() {
                       story={story}
                       onContinue={() => navigate(`/reader/${story.id}`)}
                       onDelete={() => setDeleteId(story.id)}
+                      onPublish={() => handlePublish(story.id)}
                       formatDate={formatDate}
                     />
                   ))
@@ -173,6 +244,16 @@ export default function ProfilePage() {
           </AnimatePresence>
         )}
       </div>
+
+      {/* Login Modal */}
+      <LoginModal
+        open={loginOpen}
+        onClose={() => {
+          setLoginOpen(false)
+          setPublishId(null)
+        }}
+        onSuccess={handleLoginSuccess}
+      />
 
       {/* Delete Confirmation */}
       <AnimatePresence>
@@ -192,7 +273,9 @@ export default function ProfilePage() {
               className="fixed inset-x-4 bottom-8 z-50 bg-bg-elevated rounded-2xl p-5 max-w-sm mx-auto"
             >
               <h3 className="text-base font-medium text-text-primary mb-2">删除故事</h3>
-              <p className="text-sm text-text-tertiary mb-5">删除后无法恢复，确定要继续吗？</p>
+              <p className="text-sm text-text-tertiary mb-5">
+                删除后无法恢复，确定要继续吗？
+              </p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setDeleteId(null)}
@@ -264,11 +347,13 @@ function MyStoryCard({
   story,
   onContinue,
   onDelete,
+  onPublish,
   formatDate,
 }: {
   story: Story
   onContinue: () => void
   onDelete: () => void
+  onPublish: () => void
   formatDate: (d: string) => string
 }) {
   const genreConfig = genreConfigs.find((g) => g.key === story.genre)!
@@ -287,7 +372,16 @@ function MyStoryCard({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="text-sm font-medium text-text-primary truncate">{story.title}</h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-medium text-text-primary truncate">
+                {story.title}
+              </h3>
+              {story.isPublic && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-success/15 text-success shrink-0">
+                  已发布
+                </span>
+              )}
+            </div>
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -302,7 +396,9 @@ function MyStoryCard({
           <p className="text-xs text-text-tertiary mt-1 line-clamp-1">{story.summary}</p>
 
           <div className="flex items-center gap-2 mt-2">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${genreConfig.bgColor} ${genreConfig.color}`}>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded-full ${genreConfig.bgColor} ${genreConfig.color}`}
+            >
               {genreConfig.label}
             </span>
             <span className="text-[10px] text-text-muted flex items-center gap-0.5">
@@ -336,6 +432,15 @@ function MyStoryCard({
           <Play size={13} />
           继续阅读
         </button>
+        {!story.isPublic && (
+          <button
+            onClick={onPublish}
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-bg-card border border-border text-text-primary text-xs font-medium active:bg-bg-hover transition-colors"
+          >
+            <Upload size={13} />
+            发布
+          </button>
+        )}
       </div>
     </motion.div>
   )
@@ -367,7 +472,9 @@ function InteractiveStoryCard({
       </div>
 
       <div className="flex-1 min-w-0 py-0.5">
-        <h3 className="text-sm font-medium text-text-primary truncate mb-1">{story.title}</h3>
+        <h3 className="text-sm font-medium text-text-primary truncate mb-1">
+          {story.title}
+        </h3>
 
         <div className="flex items-center gap-1.5 mb-1.5">
           <div
@@ -382,7 +489,9 @@ function InteractiveStoryCard({
         </div>
 
         <div className="flex items-center gap-2">
-          <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${genreConfig.bgColor} ${genreConfig.color}`}>
+          <span
+            className={`text-[9px] px-1.5 py-0.5 rounded-full ${genreConfig.bgColor} ${genreConfig.color}`}
+          >
             {genreConfig.label}
           </span>
           <span className="text-[9px] text-text-muted">{story.totalChapters} 章</span>

@@ -24,7 +24,7 @@ export async function getSquareStories(
       break;
   }
 
-  const conditions: string[] = ["s.status = 'ongoing'"];
+  const conditions: string[] = ["s.status = 'ongoing'", "s.is_public = TRUE"];
   const values: unknown[] = [];
 
   if (category) {
@@ -59,7 +59,7 @@ export async function getCategories(): Promise<{ name: string; count: number }[]
   const result = await query<{ style: string; count: string }>(
     `SELECT style, COUNT(*) as count
      FROM stories
-     WHERE status = 'ongoing'
+     WHERE status = 'ongoing' AND is_public = TRUE
      GROUP BY style
      ORDER BY count DESC`
   );
@@ -73,7 +73,7 @@ export async function getCategories(): Promise<{ name: string; count: number }[]
 export async function getHotSettings(): Promise<string[]> {
   const result = await query<{ setting: string }>(
     `SELECT setting FROM stories
-     WHERE status = 'ongoing'
+     WHERE status = 'ongoing' AND is_public = TRUE
      ORDER BY (likes_count * 2 + favorites_count * 3 + reads_count * 0.1) DESC
      LIMIT 10`
   );

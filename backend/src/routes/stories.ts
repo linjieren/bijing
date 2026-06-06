@@ -211,6 +211,34 @@ router.post('/:id/regenerate', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/stories/:id/publish — 发布到广场
+router.post('/:id/publish', async (req: Request, res: Response) => {
+  try {
+    const user = req.currentUser;
+    if (!user) {
+      error(res, 401, 'UNAUTHORIZED', 'Missing anonymous user');
+      return;
+    }
+
+    // 发布到广场需要绑定手机号
+    if (!user.phone) {
+      error(res, 403, 'PHONE_REQUIRED', '请先绑定手机号后再发布');
+      return;
+    }
+
+    const story = await storyService.publishStory(req.params.id, user.id);
+    if (!story) {
+      error(res, 404, 'NOT_FOUND', 'Story not found or not authorized');
+      return;
+    }
+
+    success(res, story);
+  } catch (err) {
+    console.error('Publish story error:', err);
+    error(res, 500, 'PUBLISH_FAILED', 'Failed to publish story');
+  }
+});
+
 // POST /api/stories/:id/like — 点赞
 router.post('/:id/like', async (req: Request, res: Response) => {
   try {

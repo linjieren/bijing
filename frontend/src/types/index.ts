@@ -36,6 +36,7 @@ export interface Story {
   bookmarks: number;
   isLiked?: boolean;
   isBookmarked?: boolean;
+  isPublic?: boolean;
 }
 
 // 章节
@@ -92,6 +93,7 @@ export interface User {
   id: string;
   name: string;
   avatar?: string;
+  phone?: string;
 }
 
 // 热门设定

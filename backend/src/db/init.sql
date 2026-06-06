@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS stories (
   cover_url TEXT,
   author_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   status VARCHAR(32) DEFAULT 'ongoing' CHECK (status IN ('ongoing', 'completed', 'abandoned')),
+  is_public BOOLEAN DEFAULT FALSE,
   likes_count INTEGER DEFAULT 0,
   favorites_count INTEGER DEFAULT 0,
   reads_count INTEGER DEFAULT 0,
@@ -114,6 +115,19 @@ CREATE TABLE IF NOT EXISTS feedback (
 CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);
 CREATE INDEX IF NOT EXISTS idx_feedback_type ON feedback(type);
 CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at DESC);
+
+-- ===== 验证码表 =====
+CREATE TABLE IF NOT EXISTS verification_codes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  phone VARCHAR(20) NOT NULL,
+  code VARCHAR(6) NOT NULL,
+  used BOOLEAN DEFAULT FALSE,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_verification_codes_phone ON verification_codes(phone);
+CREATE INDEX IF NOT EXISTS idx_verification_codes_expires ON verification_codes(expires_at);
 
 -- ===== 更新触发器：自动更新 stories.updated_at =====
 CREATE OR REPLACE FUNCTION update_updated_at_column()

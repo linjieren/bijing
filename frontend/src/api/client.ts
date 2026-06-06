@@ -71,6 +71,7 @@ export interface BackendStory {
   author_nickname?: string;
   author_avatar_color?: string;
   status: 'ongoing' | 'completed' | 'abandoned';
+  is_public?: boolean;
   likes_count: number;
   favorites_count: number;
   reads_count: number;
@@ -119,6 +120,7 @@ function mapBackendStory(bs: BackendStory): Story {
     bookmarks: bs.favorites_count || 0,
     isLiked: false,
     isBookmarked: false,
+    isPublic: bs.is_public ?? false,
   };
 }
 
@@ -239,6 +241,46 @@ export async function toggleBookmark(storyId: string): Promise<{ bookmarked: boo
 export async function getRandomPrompt(): Promise<{ description: string; genre: StoryGenre | null }> {
   const data = await request<{ prompt: string }>('/api/stories/random-prompt');
   return { description: data.prompt, genre: null };
+}
+
+// ===== 发布 API =====
+
+export async function publishStory(storyId: string): Promise<Story> {
+  const data = await request<BackendStory>(`/api/stories/${storyId}/publish`, {
+    method: 'POST',
+  });
+  return mapBackendStory(data);
+}
+
+// ===== 认证 API =====
+
+export async function sendVerificationCode(phone: string): Promise<{ sent: boolean }> {
+  return request('/api/auth/send-code', {
+    method: 'POST',
+    body: JSON.stringify({ phone }),
+  });
+}
+
+export async function verifyPhone(phone: string, code: string): Promise<{ id: string; phone: string }> {
+  return request('/api/auth/verify', {
+    method: 'POST',
+    body: JSON.stringify({ phone, code }),
+  });
+}
+
+// ===== 用户 API =====
+
+export interface CurrentUser {
+  id: string;
+  anonymous_id: string;
+  nickname?: string;
+  avatar_color?: string;
+  phone?: string;
+  created_at: string;
+}
+
+export async function getCurrentUser(): Promise<CurrentUser> {
+  return request<CurrentUser>('/api/me');
 }
 
 // ===== 分享 API =====
