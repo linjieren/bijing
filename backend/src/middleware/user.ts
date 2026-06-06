@@ -49,7 +49,19 @@ export async function userMiddleware(
     );
 
     if (result.rows.length > 0) {
-      req.currentUser = result.rows[0];
+      const user = result.rows[0];
+      // 老用户回补昵称和头像色
+      if (!user.nickname || !user.avatar_color) {
+        const nickname = user.nickname || getRandomNickname();
+        const avatarColor = user.avatar_color || getRandomAvatarColor();
+        const update = await query<User>(
+          'UPDATE users SET nickname = $1, avatar_color = $2 WHERE id = $3 RETURNING *',
+          [nickname, avatarColor, user.id]
+        );
+        req.currentUser = update.rows[0];
+      } else {
+        req.currentUser = user;
+      }
     } else {
       const nickname = getRandomNickname();
       const avatarColor = getRandomAvatarColor();
