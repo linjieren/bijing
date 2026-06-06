@@ -12,8 +12,9 @@ COPY package*.json tsconfig.json ./
 RUN npm ci
 
 # 拷贝源码并编译
+ARG CACHEBUST=2
 COPY src/ ./src/
-RUN npm run build && echo "build-verified"
+RUN npm run build && echo "build-verified-$CACHEBUST"
 
 # ===========================
 # 阶段 2：生产运行
