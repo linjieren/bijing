@@ -4,11 +4,6 @@ import * as authService from '../services/authService';
 
 const router = Router();
 
-// GET /api/auth/version — 调试用，确认部署版本
-router.get('/version', (_req: Request, res: Response) => {
-  res.json({ version: '2026-06-06-v2', hasSmsProvider: !!process.env.SMS_PROVIDER });
-});
-
 // POST /api/auth/send-code — 发送验证码
 router.post('/send-code', async (req: Request, res: Response) => {
   try {
@@ -20,7 +15,7 @@ router.post('/send-code', async (req: Request, res: Response) => {
     }
 
     const result = await authService.sendVerificationCode(phone);
-    success(res, { sent: result.sent });
+    success(res, { sent: result.sent, mockCode: result.mockCode });
   } catch (err) {
     console.error('Send code error:', err);
     error(res, 500, 'SEND_FAILED', 'Failed to send verification code');
