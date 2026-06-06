@@ -18,7 +18,10 @@ export async function createStory(
 
 export async function getStoryById(id: string): Promise<StoryWithChapters | null> {
   const storyResult = await query<Story>(
-    'SELECT * FROM stories WHERE id = $1',
+    `SELECT s.*, u.nickname as author_nickname, u.avatar_color as author_avatar_color
+     FROM stories s
+     JOIN users u ON s.author_id = u.id
+     WHERE s.id = $1`,
     [id]
   );
   if (storyResult.rows.length === 0) return null;
@@ -48,8 +51,11 @@ export async function getStoriesByAuthor(
   );
 
   const result = await query<Story>(
-    `SELECT * FROM stories WHERE author_id = $1
-     ORDER BY updated_at DESC
+    `SELECT s.*, u.nickname as author_nickname, u.avatar_color as author_avatar_color
+     FROM stories s
+     JOIN users u ON s.author_id = u.id
+     WHERE s.author_id = $1
+     ORDER BY s.updated_at DESC
      LIMIT $2 OFFSET $3`,
     [authorId, pageSize, offset]
   );

@@ -13,35 +13,37 @@ export async function getSquareStories(
   let orderBy: string;
   switch (sort) {
     case 'latest':
-      orderBy = 'created_at DESC';
+      orderBy = 's.created_at DESC';
       break;
     case 'favorites':
-      orderBy = 'favorites_count DESC, created_at DESC';
+      orderBy = 's.favorites_count DESC, s.created_at DESC';
       break;
     case 'hot':
     default:
-      // 综合热度 = 点赞 * 2 + 收藏 * 3 + 阅读 * 0.1
-      orderBy = '(likes_count * 2 + favorites_count * 3 + reads_count * 0.1) DESC, created_at DESC';
+      orderBy = '(s.likes_count * 2 + s.favorites_count * 3 + s.reads_count * 0.1) DESC, s.created_at DESC';
       break;
   }
 
-  const conditions: string[] = ["status = 'ongoing'"];
+  const conditions: string[] = ["s.status = 'ongoing'"];
   const values: unknown[] = [];
 
   if (category) {
     values.push(category);
-    conditions.push(`style = $${values.length}`);
+    conditions.push(`s.style = $${values.length}`);
   }
 
   const whereClause = conditions.join(' AND ');
 
   const countResult = await query<{ count: string }>(
-    `SELECT COUNT(*) FROM stories WHERE ${whereClause}`,
+    `SELECT COUNT(*) FROM stories s WHERE ${whereClause}`,
     values
   );
 
   const result = await query<Story>(
-    `SELECT * FROM stories WHERE ${whereClause}
+    `SELECT s.*, u.nickname as author_nickname, u.avatar_color as author_avatar_color
+     FROM stories s
+     JOIN users u ON s.author_id = u.id
+     WHERE ${whereClause}
      ORDER BY ${orderBy}
      LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
     [...values, pageSize, offset]
@@ -69,7 +71,6 @@ export async function getCategories(): Promise<{ name: string; count: number }[]
 }
 
 export async function getHotSettings(): Promise<string[]> {
-  // 从热门故事的设定中提取前10个
   const result = await query<{ setting: string }>(
     `SELECT setting FROM stories
      WHERE status = 'ongoing'

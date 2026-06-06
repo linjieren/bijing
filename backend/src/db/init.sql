@@ -8,6 +8,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   anonymous_id VARCHAR(64) UNIQUE NOT NULL,
+  nickname VARCHAR(64),
+  avatar_color VARCHAR(16),
+  phone VARCHAR(20),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

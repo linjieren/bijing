@@ -3,6 +3,9 @@
 export interface User {
   id: string;
   anonymous_id: string;
+  nickname?: string;
+  avatar_color?: string;
+  phone?: string;
   created_at: Date;
 }
 
@@ -18,6 +21,8 @@ export interface Story {
   style: StoryStyle;
   cover_url?: string;
   author_id: string;
+  author_nickname?: string;
+  author_avatar_color?: string;
   status: StoryStatus;
   likes_count: number;
   favorites_count: number;

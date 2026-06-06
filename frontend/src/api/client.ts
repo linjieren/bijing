@@ -25,7 +25,9 @@ const STYLE_TO_GENRE: Record<string, StoryGenre> = {
 function getAnonymousId(): string {
   let id = localStorage.getItem('bijing-anonymous-id');
   if (!id) {
-    id = crypto.randomUUID();
+    id = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     localStorage.setItem('bijing-anonymous-id', id);
   }
   return id;
