@@ -33,7 +33,7 @@ app.use(userMiddleware);
 
 // 健康检查
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', version: '2026-06-06-v3' });
 });
 
 // 当前用户信息
