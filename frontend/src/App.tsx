@@ -5,13 +5,13 @@ import ReaderPage from './pages/ReaderPage'
 import MyStoriesPage from './pages/MyStoriesPage'
 import CommunityPage from './pages/CommunityPage'
 import ProfilePage from './pages/ProfilePage'
+import ShareLandingPage from './pages/ShareLandingPage'
 import FeedbackButton from './components/FeedbackButton'
+import ErrorBoundary from './components/ErrorBoundary'
 
 function App() {
-  const showFeedback = import.meta.env.VITE_APP_ENV === 'dev'
-
   return (
-    <>
+    <ErrorBoundary>
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<CreatePage />} />
@@ -20,9 +20,10 @@ function App() {
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
         <Route path="/reader/:storyId" element={<ReaderPage />} />
+        <Route path="/share/:code" element={<ShareLandingPage />} />
       </Routes>
-      {showFeedback && <FeedbackButton />}
-    </>
+      <FeedbackButton />
+    </ErrorBoundary>
   )
 }
 
