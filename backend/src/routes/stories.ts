@@ -139,10 +139,15 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
   try {
     const { previousChapterId, userChoice } = req.body;
     const storyId = req.params.id;
+    const isStream = req.query.stream === 'true';
 
     const story = await storyService.getStoryById(storyId);
     if (!story) {
-      error(res, 404, 'NOT_FOUND', 'Story not found');
+      if (!isStream) {
+        error(res, 404, 'NOT_FOUND', 'Story not found');
+      } else {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Story not found' } });
+      }
       return;
     }
 
@@ -150,18 +155,55 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
     if (previousChapterId) {
       previousChapter = await chapterService.getChapterById(previousChapterId);
       if (!previousChapter || previousChapter.story_id !== storyId) {
-        error(res, 400, 'INVALID_CHAPTER', 'Previous chapter not found');
+        if (!isStream) {
+          error(res, 400, 'INVALID_CHAPTER', 'Previous chapter not found');
+        } else {
+          res.status(400).json({ success: false, error: { code: 'INVALID_CHAPTER', message: 'Previous chapter not found' } });
+        }
         return;
       }
     }
 
-    // 调用 AI 生成下一章
-    const generated = await aiService.generateNextChapter(
+    if (!isStream) {
+      // 同步模式
+      const generated = await aiService.generateNextChapter(
+        story.title,
+        story.setting,
+        story.style,
+        previousChapter,
+        userChoice !== undefined ? parseInt(userChoice) : null
+      );
+
+      const nextSequence = await chapterService.getNextSequence(storyId);
+
+      const chapter = await chapterService.createChapter(
+        storyId,
+        nextSequence,
+        generated.title,
+        generated.content,
+        generated.choices,
+        generated.worldState
+      );
+
+      success(res, chapter);
+      return;
+    }
+
+    // 流式模式
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    const generated = await aiService.generateNextChapterStream(
       story.title,
       story.setting,
       story.style,
       previousChapter,
-      userChoice !== undefined ? parseInt(userChoice) : null
+      userChoice !== undefined ? parseInt(userChoice) : null,
+      (chunk) => {
+        res.write(`data: ${JSON.stringify({ type: 'content', chunk })}\n\n`);
+      }
     );
 
     const nextSequence = await chapterService.getNextSequence(storyId);
@@ -175,10 +217,16 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
       generated.worldState
     );
 
-    success(res, chapter);
+    res.write(`data: ${JSON.stringify({ type: 'done', chapter })}\n\n`);
+    res.end();
   } catch (err) {
     console.error('Generate chapter error:', err);
-    error(res, 500, 'GENERATE_FAILED', 'Failed to generate chapter');
+    if (req.query.stream === 'true') {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to generate chapter' })}\n\n`);
+      res.end();
+    } else {
+      error(res, 500, 'GENERATE_FAILED', 'Failed to generate chapter');
+    }
   }
 });
 

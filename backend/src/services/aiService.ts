@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { Readable } from 'stream';
 import { Chapter, WorldState, ChoiceOption, StoryStyle } from '../types';
 
 const KIMI_API_KEY = process.env.KIMI_API_KEY || '';
@@ -105,6 +106,81 @@ async function callKimi(messages: KimiMessage[], temperature = 0.8): Promise<str
     );
 
     return response.data.choices[0]?.message?.content || '';
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status;
+      if (status === 401 || status === 403 || status === 429) {
+        throw new KimiApiError(`Moonshot API returned ${status}`, status);
+      }
+    }
+    throw err;
+  }
+}
+
+// ===== 流式调用 Kimi =====
+export async function* callKimiStream(
+  messages: KimiMessage[],
+  temperature = 0.8
+): AsyncGenerator<string, void, unknown> {
+  if (!KIMI_API_KEY) {
+    throw new KimiApiError('KIMI_API_KEY not configured');
+  }
+
+  // Rate limit
+  const now = Date.now();
+  const waitTime = MIN_INTERVAL_MS - (now - lastRequestTime);
+  if (waitTime > 0) {
+    await new Promise((r) => setTimeout(r, waitTime));
+  }
+  lastRequestTime = Date.now();
+
+  try {
+    const response = await axios.post(
+      KIMI_API_URL,
+      {
+        model: KIMI_MODEL,
+        messages,
+        temperature,
+        max_tokens: 4000,
+        stream: true,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${KIMI_API_KEY}`,
+        },
+        timeout: 120000,
+        responseType: 'stream',
+      }
+    );
+
+    const stream = response.data as Readable;
+    let buffer = '';
+
+    for await (const chunk of stream) {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === ': keep-alive') continue;
+        if (!trimmed.startsWith('data:')) continue;
+
+        const data = trimmed.slice(5).trim();
+        if (data === '[DONE]') return;
+
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (typeof content === 'string') {
+            yield content;
+          }
+        } catch {
+          // ignore parse errors for malformed lines
+        }
+      }
+    }
   } catch (err) {
     if (axios.isAxiosError(err)) {
       const status = err.response?.status;
@@ -282,6 +358,174 @@ ${JSON.stringify(previousChapter.world_state, null, 2)}
       atmosphere: '',
     },
   };
+}
+
+// ===== 流式生成下一章 =====
+export async function generateNextChapterStream(
+  storyTitle: string,
+  storySetting: string,
+  style: StoryStyle,
+  previousChapter: Chapter | null,
+  userChoiceIndex: number | null,
+  onChunk: (chunk: string) => void
+): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState }> {
+  if (MOCK_MODE) {
+    const result = generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
+    onChunk(result.content);
+    return result;
+  }
+
+  const styleDesc = styleDescriptions[style];
+
+  let userPrompt = `你正在写一个互动式${style}网文。
+
+故事标题：${storyTitle}
+故事设定：${storySetting}
+风格要求：${styleDesc}
+
+`;
+
+  if (previousChapter) {
+    const choiceText = userChoiceIndex !== null
+      ? previousChapter.choices[userChoiceIndex]?.text || '继续故事'
+      : '继续故事';
+
+    userPrompt += `上一章标题：${previousChapter.title}
+上一章内容概要：${previousChapter.content.substring(0, 500)}...
+
+用户的选择是："${choiceText}"
+
+当前世界状态：
+${JSON.stringify(previousChapter.world_state, null, 2)}
+
+请根据用户的选择，续写下一章。`;
+  } else {
+    userPrompt += `这是故事的第一章（开场）。请根据设定展开故事。`;
+  }
+
+  userPrompt += `
+**字数要求：严格控制在 800-1200 字之间。不得少于 800 字，不要超过 1500 字。**
+**节奏要求：${previousChapter ? '本章是故事的中间章节，请保持剧情推进，留有悬念，不要在此处完结。' : '作为开场，需要建立世界观、引入核心冲突，并埋下后续伏笔。'}**
+
+你必须严格按以下格式输出：
+
+1. 先写章节正文内容（精彩、有画面感、符合${style}风格）
+2. 正文结束后，单独一行输出分隔符：###META###
+3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：
+
+###META###
+{
+  "title": "章节标题",
+  "choices": [
+    { "id": "1", "text": "选项1描述" },
+    { "id": "2", "text": "选项2描述" },
+    { "id": "3", "text": "选项3描述" }
+  ],
+  "worldState": {
+    "characters": [
+      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }
+    ],
+    "keyEvents": ["关键事件1", "关键事件2"],
+    "currentScene": "当前场景描述",
+    "atmosphere": "当前氛围"
+  }
+}
+
+要求：
+1. choices 必须提供 2-3 个有意义的分支选项
+2. 选项要引导故事往不同方向发展
+3. content 要写得精彩，有画面感，符合${style}风格，严格 800-1200 字
+4. worldState 要准确反映本章后的新状态
+5. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记`;
+
+  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。
+请严格按照要求的格式输出：先写正文，然后换行输出 ###META###，再输出 JSON 元数据。
+确保 JSON 格式合法。`;
+
+  let accumulated = '';
+  let contentEmitted = 0;
+  let inMeta = false;
+  const META_SEP = '\n###META###\n';
+
+  try {
+    for await (const chunk of callKimiStream([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ])) {
+      accumulated += chunk;
+
+      if (!inMeta) {
+        const sepIdx = accumulated.indexOf(META_SEP);
+        if (sepIdx !== -1) {
+          const newContent = accumulated.slice(contentEmitted, sepIdx);
+          if (newContent) onChunk(newContent);
+          contentEmitted = sepIdx;
+          inMeta = true;
+        } else {
+          const safeUpTo = Math.max(contentEmitted, accumulated.length - META_SEP.length + 1);
+          if (safeUpTo > contentEmitted) {
+            onChunk(accumulated.slice(contentEmitted, safeUpTo));
+            contentEmitted = safeUpTo;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    if (err instanceof KimiApiError) {
+      const result = generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
+      onChunk(result.content);
+      return result;
+    }
+    throw err;
+  }
+
+  const sepIdx = accumulated.indexOf(META_SEP);
+  let content: string;
+  let metaStr: string;
+
+  if (sepIdx !== -1) {
+    content = accumulated.slice(0, sepIdx);
+    metaStr = accumulated.slice(sepIdx + META_SEP.length);
+    if (contentEmitted < sepIdx) {
+      onChunk(accumulated.slice(contentEmitted, sepIdx));
+    }
+  } else {
+    content = accumulated;
+    metaStr = '';
+    if (contentEmitted < accumulated.length) {
+      onChunk(accumulated.slice(contentEmitted));
+    }
+  }
+
+  let title = '未命名章节';
+  let choices: ChoiceOption[] = [];
+  let worldState: WorldState = {
+    characters: [],
+    keyEvents: [],
+    currentScene: '',
+    atmosphere: '',
+  };
+
+  if (metaStr) {
+    const parsed = safeParseJSON(metaStr) as Record<string, unknown> | null;
+    if (parsed && typeof parsed === 'object') {
+      title = (parsed.title as string) || title;
+      choices = (parsed.choices as ChoiceOption[]) || [];
+      worldState = (parsed.worldState as WorldState) || worldState;
+    }
+  }
+
+  if (!metaStr) {
+    const parsed = safeParseJSON(content) as Record<string, unknown> | null;
+    if (parsed && typeof parsed === 'object' && parsed.content) {
+      content = (parsed.content as string) || content;
+      title = (parsed.title as string) || title;
+      choices = (parsed.choices as ChoiceOption[]) || [];
+      worldState = (parsed.worldState as WorldState) || worldState;
+    }
+  }
+
+  return { title, content, choices, worldState };
 }
 
 // ===== 世界状态总结 =====

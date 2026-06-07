@@ -219,6 +219,88 @@ export async function generateChapter(
   return { chapter, worldState };
 }
 
+export async function generateChapterStream(
+  storyId: string,
+  previousChapterId?: string,
+  userChoiceIndex?: number,
+  onContent?: (chunk: string) => void
+): Promise<{ chapter: Chapter; worldState: WorldState }> {
+  const url = `${API_BASE_URL}/api/stories/${storyId}/chapters?stream=true`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Anonymous-Id': getAnonymousId(),
+    },
+    body: JSON.stringify({
+      previousChapterId: previousChapterId || undefined,
+      userChoice: userChoiceIndex !== undefined ? userChoiceIndex : undefined,
+    }),
+  });
+
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error?.message || `Request failed: ${res.status}`);
+  }
+
+  if (!res.body) {
+    throw new Error('No response body');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalChapter: BackendChapter | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+
+      const data = trimmed.slice(5).trim();
+      if (!data) continue;
+
+      try {
+        const event = JSON.parse(data);
+        if (event.type === 'content' && onContent) {
+          onContent(event.chunk);
+        } else if (event.type === 'done') {
+          finalChapter = event.chapter;
+        } else if (event.type === 'error') {
+          throw new Error(event.message || 'Stream error');
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message === 'Stream error') throw e;
+      }
+    }
+  }
+
+  if (buffer.trim().startsWith('data:')) {
+    const data = buffer.trim().slice(5).trim();
+    try {
+      const event = JSON.parse(data);
+      if (event.type === 'done') finalChapter = event.chapter;
+    } catch { /* ignore */ }
+  }
+
+  if (!finalChapter) {
+    throw new Error('Stream ended without final chapter data');
+  }
+
+  const chapter = mapBackendChapter(finalChapter);
+  const worldState = mapBackendWorldState(finalChapter.world_state, storyId, chapter.chapterNumber);
+
+  return { chapter, worldState };
+}
+
 // ===== 广场 API =====
 
 export async function getSquareStories(sort: 'hot' | 'latest' | 'favorites' = 'hot'): Promise<Story[]> {

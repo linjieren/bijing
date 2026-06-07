@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { useStoryStore } from '../stores/storyStore'
 import WorldDrawer from '../components/WorldDrawer'
-import { getStoryDetail, generateChapter } from '../api/client'
+import { getStoryDetail, generateChapterStream } from '../api/client'
 import type { Chapter, WorldState, Story } from '../types'
 
 export default function ReaderPage() {
@@ -18,16 +18,19 @@ export default function ReaderPage() {
   const { setCurrentStory, setCurrentChapter, setWorldState, updateProgress } = useStoryStore()
   const [showWorld, setShowWorld] = useState(false)
   const [displayedText, setDisplayedText] = useState('')
-  const [isTyping, setIsTyping] = useState(true)
+  const [isTyping, setIsTyping] = useState(false)
   const [showChoices, setShowChoices] = useState(false)
   const [chapterKey, setChapterKey] = useState(0)
   const [chapter, setChapter] = useState<Chapter | null>(null)
+  const [previewChapter, setPreviewChapter] = useState<Chapter | null>(null)
   const [world, setWorld] = useState<WorldState | null>(null)
   const [, setStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState('')
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const skipTypewriterRef = useRef(false)
 
   // Load story and initial chapter
   useEffect(() => {
@@ -45,19 +48,42 @@ export default function ReaderPage() {
         setCurrentStory(s)
 
         if (chapters.length === 0) {
-          // Generate first chapter
+          // Generate first chapter with streaming
           setGenerating(true)
-          const { chapter: ch, worldState: ws } = await generateChapter(sid)
+          setIsStreaming(true)
+          setPreviewChapter({
+            id: 'preview',
+            storyId: sid,
+            chapterNumber: 1,
+            title: 'AI 正在创作中…',
+            content: '',
+            choices: [],
+            createdAt: new Date().toISOString(),
+          })
+          setChapterKey((k) => k + 1)
+
+          const { chapter: ch, worldState: ws } = await generateChapterStream(
+            sid,
+            undefined,
+            undefined,
+            (chunk) => {
+              setPreviewChapter((prev) =>
+                prev ? { ...prev, content: prev.content + chunk } : null
+              )
+            }
+          )
           if (cancelled) return
+
           setChapter(ch)
           setWorld(ws)
           setCurrentChapter(ch)
           setWorldState(ws)
-          setChapterKey((k) => k + 1)
+          setPreviewChapter(null)
+          setIsStreaming(false)
+          skipTypewriterRef.current = true
         } else {
           const last = chapters[chapters.length - 1]
           setChapter(last)
-          // Build a basic world state from chapter data if available
           const ws: WorldState = {
             storyId: sid,
             characters: [],
@@ -72,6 +98,8 @@ export default function ReaderPage() {
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : '加载失败')
+          setPreviewChapter(null)
+          setIsStreaming(false)
         }
       } finally {
         if (!cancelled) {
@@ -91,6 +119,14 @@ export default function ReaderPage() {
   // Typewriter effect
   useEffect(() => {
     if (!chapter) return
+
+    if (skipTypewriterRef.current) {
+      setDisplayedText(chapter.content)
+      setIsTyping(false)
+      setShowChoices(true)
+      skipTypewriterRef.current = false
+      return
+    }
 
     setDisplayedText('')
     setIsTyping(true)
@@ -121,23 +157,46 @@ export default function ReaderPage() {
       if (!storyId || !chapter || generating) return
       setShowChoices(false)
       setGenerating(true)
+      setIsStreaming(true)
       setError('')
 
+      const nextSeq = chapter.chapterNumber + 1
+      setPreviewChapter({
+        id: 'preview',
+        storyId,
+        chapterNumber: nextSeq,
+        title: 'AI 正在创作中…',
+        content: '',
+        choices: [],
+        createdAt: new Date().toISOString(),
+      })
+      setChapterKey((k) => k + 1)
+
       try {
-        const { chapter: nextCh, worldState: nextWs } = await generateChapter(
+        const { chapter: nextCh, worldState: nextWs } = await generateChapterStream(
           storyId,
           chapter.id,
-          choiceIndex
+          choiceIndex,
+          (chunk) => {
+            setPreviewChapter((prev) =>
+              prev ? { ...prev, content: prev.content + chunk } : null
+            )
+          }
         )
+
         setChapter(nextCh)
         setWorld(nextWs)
         setCurrentChapter(nextCh)
         setWorldState(nextWs)
         updateProgress(storyId, nextCh.chapterNumber, choiceId)
-        setChapterKey((k) => k + 1)
+        setPreviewChapter(null)
+        setIsStreaming(false)
+        skipTypewriterRef.current = true
       } catch (err) {
         setError(err instanceof Error ? err.message : '生成失败，请重试')
         setShowChoices(true)
+        setPreviewChapter(null)
+        setIsStreaming(false)
       } finally {
         setGenerating(false)
       }
@@ -149,9 +208,10 @@ export default function ReaderPage() {
     navigate(-1)
   }, [navigate])
 
-  const progress = chapter ? (chapter.chapterNumber / 12) * 100 : 0
+  const activeChapter = previewChapter || chapter
+  const progress = activeChapter ? (activeChapter.chapterNumber / 12) * 100 : 0
 
-  if (loading || generating) {
+  if (loading || (generating && !isStreaming)) {
     return (
       <div className="min-h-dvh bg-bg flex flex-col items-center justify-center">
         <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin mb-4" />
@@ -162,7 +222,7 @@ export default function ReaderPage() {
     )
   }
 
-  if (error || !chapter) {
+  if (error || !activeChapter) {
     return (
       <div className="min-h-dvh bg-bg flex flex-col items-center justify-center px-5">
         <p className="text-sm text-danger mb-4">{error || '章节加载失败'}</p>
@@ -175,6 +235,8 @@ export default function ReaderPage() {
       </div>
     )
   }
+
+  const contentToShow = isStreaming ? (previewChapter?.content || '') : displayedText
 
   return (
     <div className="min-h-dvh bg-bg flex flex-col">
@@ -190,10 +252,10 @@ export default function ReaderPage() {
 
           <div className="flex flex-col items-center">
             <span className="text-xs text-text-tertiary">
-              第 {chapter.chapterNumber} 章
+              第 {activeChapter.chapterNumber} 章
             </span>
             <span className="text-sm font-medium text-text-primary">
-              {chapter.title}
+              {activeChapter.title}
             </span>
           </div>
 
@@ -228,24 +290,24 @@ export default function ReaderPage() {
           >
             {/* Chapter title */}
             <h1 className="text-lg font-bold text-text-primary mb-6 text-center">
-              {chapter.title}
+              {activeChapter.title}
             </h1>
 
             {/* Content */}
             <div className="text-[15px] leading-[1.9] text-text-secondary font-serif">
-              {displayedText.split('\n\n').map((paragraph, idx) => (
+              {contentToShow.split('\n\n').map((paragraph, idx) => (
                 <p key={idx} className="mb-5 text-justify indent-8">
                   {paragraph}
                 </p>
               ))}
-              {isTyping && (
+              {(isStreaming || isTyping) && (
                 <span className="inline-block w-0.5 h-4 bg-accent animate-pulse ml-0.5 align-middle" />
               )}
             </div>
 
             {/* Choices */}
             <AnimatePresence>
-              {showChoices && (
+              {!isStreaming && showChoices && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -255,7 +317,7 @@ export default function ReaderPage() {
                   <p className="text-xs text-text-muted text-center mb-4">
                     你的选择将决定故事走向
                   </p>
-                  {chapter.choices.map((choice, idx) => (
+                  {activeChapter.choices.map((choice, idx) => (
                     <motion.button
                       key={choice.id}
                       initial={{ opacity: 0, y: 10 }}
@@ -296,7 +358,7 @@ export default function ReaderPage() {
           <div className="flex items-center gap-1.5 text-xs text-text-muted">
             <BookOpenCheck size={14} />
             <span>
-              {chapter.chapterNumber} / 12 章
+              {activeChapter.chapterNumber} / 12 章
             </span>
           </div>
         </div>
