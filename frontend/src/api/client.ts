@@ -178,8 +178,8 @@ function mapBackendWorldState(
   };
 }
 
-export async function createStory(payload: { prompt: string; genre: StoryGenre; lengthPreference?: string }): Promise<Story> {
-  const title = payload.prompt.slice(0, 30).trim() + (payload.prompt.length > 30 ? '…' : '');
+export async function createStory(payload: { prompt: string; genre: StoryGenre; lengthPreference?: string; title?: string }): Promise<Story> {
+  const title = payload.title || payload.prompt.slice(0, 30).trim() + (payload.prompt.length > 30 ? '…' : '');
   const body: Record<string, string> = {
     title,
     setting: payload.prompt,

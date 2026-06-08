@@ -14,6 +14,7 @@ interface StoryState {
   draftPrompt: string;
   draftGenre: StoryGenre | null;
   draftLength: StoryLength | null;
+  draftTitle: string | null;
 
   // Actions
   setStories: (stories: Story[]) => void;
@@ -24,6 +25,7 @@ interface StoryState {
   setDraftPrompt: (prompt: string) => void;
   setDraftGenre: (genre: StoryGenre | null) => void;
   setDraftLength: (length: StoryLength | null) => void;
+  setDraftTitle: (title: string | null) => void;
   deleteStory: (storyId: string) => void;
   toggleLike: (storyId: string) => void;
   toggleBookmark: (storyId: string) => void;
@@ -40,6 +42,7 @@ export const useStoryStore = create<StoryState>()(
       draftPrompt: '',
       draftGenre: null,
       draftLength: null,
+      draftTitle: null,
 
       setStories: (stories) => set({ stories }),
       setCurrentStory: (story) => set({ currentStory: story }),
@@ -69,6 +72,7 @@ export const useStoryStore = create<StoryState>()(
       setDraftPrompt: (prompt) => set({ draftPrompt: prompt }),
       setDraftGenre: (genre) => set({ draftGenre: genre }),
       setDraftLength: (length) => set({ draftLength: length }),
+      setDraftTitle: (title) => set({ draftTitle: title }),
 
       deleteStory: (storyId) => {
         set({

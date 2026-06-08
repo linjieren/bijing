@@ -48,7 +48,7 @@ const genreToDefaultLength: Record<StoryGenre, StoryLength> = {
 
 export default function CreatePage() {
   const navigate = useNavigate()
-  const { draftPrompt, draftGenre, draftLength, setDraftPrompt, setDraftGenre, setDraftLength } = useStoryStore()
+  const { draftPrompt, draftGenre, draftLength, draftTitle, setDraftPrompt, setDraftGenre, setDraftLength, setDraftTitle } = useStoryStore()
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [isRandomLoading, setIsRandomLoading] = useState(false)
@@ -76,12 +76,13 @@ export default function CreatePage() {
   const handleSuggestionClick = useCallback(
     (suggestion: (typeof promptSuggestions)[0]) => {
       setDraftPrompt(suggestion.description)
+      setDraftTitle(suggestion.title)
       setDraftGenre(suggestion.genre)
       if (!hasManualLength) {
         setDraftLength(genreToDefaultLength[suggestion.genre])
       }
     },
-    [setDraftPrompt, setDraftGenre, setDraftLength, hasManualLength]
+    [setDraftPrompt, setDraftTitle, setDraftGenre, setDraftLength, hasManualLength]
   )
 
   const handleRandom = useCallback(async () => {
@@ -89,6 +90,7 @@ export default function CreatePage() {
     try {
       const random = await getRandomPrompt()
       setDraftPrompt(random.description)
+      setDraftTitle(null)
       if (random.genre) {
         setDraftGenre(random.genre)
         if (!hasManualLength) {
@@ -99,6 +101,7 @@ export default function CreatePage() {
       // fallback to local mock
       const fallback = promptSuggestions[Math.floor(Math.random() * promptSuggestions.length)]
       setDraftPrompt(fallback.description)
+      setDraftTitle(null)
       setDraftGenre(fallback.genre)
       if (!hasManualLength) {
         setDraftLength(genreToDefaultLength[fallback.genre])
@@ -106,7 +109,7 @@ export default function CreatePage() {
     } finally {
       setIsRandomLoading(false)
     }
-  }, [setDraftPrompt, setDraftGenre, setDraftLength, hasManualLength])
+  }, [setDraftPrompt, setDraftTitle, setDraftGenre, setDraftLength, hasManualLength])
 
   const handleCreate = useCallback(async () => {
     if (!draftPrompt.trim() || !draftGenre || isCreating) return
@@ -116,6 +119,7 @@ export default function CreatePage() {
         prompt: draftPrompt.trim(),
         genre: draftGenre,
         lengthPreference: draftLength || undefined,
+        title: draftTitle || undefined,
       })
       track('story_created', { genre: draftGenre, promptLength: draftPrompt.trim().length, length: draftLength })
       navigate(`/reader/${story.id}`, { state: { isNew: true, title: story.title, summary: story.summary } })
@@ -124,7 +128,7 @@ export default function CreatePage() {
     } finally {
       setIsCreating(false)
     }
-  }, [draftPrompt, draftGenre, draftLength, isCreating, navigate])
+  }, [draftPrompt, draftGenre, draftLength, draftTitle, isCreating, navigate])
 
   const filteredSuggestions = draftGenre
     ? promptSuggestions.filter((s) => s.genre === draftGenre)
@@ -146,7 +150,10 @@ export default function CreatePage() {
         <div className="relative">
           <textarea
             value={draftPrompt}
-            onChange={(e) => setDraftPrompt(e.target.value)}
+            onChange={(e) => {
+              setDraftPrompt(e.target.value)
+              if (draftTitle) setDraftTitle(null)
+            }}
             placeholder="比如：我穿越成了大夏国最不受宠的七皇子，开局即被派去守皇陵，却意外激活了龙脉传承..."
             className="w-full min-h-[120px] p-4 rounded-2xl bg-bg-card border border-border
                        text-sm text-text-primary placeholder:text-text-muted
