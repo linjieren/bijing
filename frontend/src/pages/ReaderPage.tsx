@@ -368,11 +368,14 @@ export default function ReaderPage() {
             <ChevronLeft size={18} />
           </button>
 
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center max-w-[60%]">
+            <span className="text-[10px] text-text-tertiary truncate w-full text-center leading-tight">
+              {story?.title || '笔境'}
+            </span>
             <span className="text-xs text-text-tertiary">
               第 {activeChapter.chapterNumber} 章
             </span>
-            <span className="text-sm font-medium text-text-primary">
+            <span className="text-sm font-medium text-text-primary truncate w-full text-center">
               {activeChapter.title}
             </span>
           </div>
@@ -524,9 +527,7 @@ export default function ReaderPage() {
 
           <div className="flex items-center gap-1.5 text-xs text-text-muted">
             <BookOpenCheck size={14} />
-            <span>
-              {activeChapter.chapterNumber} / {maxChapters} 章
-            </span>
+            <span>第 {activeChapter.chapterNumber} 章</span>
           </div>
         </div>
       </footer>

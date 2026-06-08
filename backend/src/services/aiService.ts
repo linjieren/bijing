@@ -262,7 +262,7 @@ export async function generateNextChapter(
   lengthPreference?: StoryLength,
   currentChapterNumber = 1,
   maxChapters?: number
-): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState; isFinale: boolean }> {
+): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState; isFinale: boolean; storyTitle?: string }> {
   if (MOCK_MODE) {
     const mock = generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
     return { ...mock, isFinale: false };
@@ -287,9 +287,12 @@ export async function generateNextChapter(
     userPrompt += `\n\n${getPacingHint(lengthPreference, currentChapterNumber, maxChapters)}`;
   }
 
-  userPrompt += `\n\n你必须严格按以下 JSON 格式输出，不要添加任何其他文字：\n\n{\n  "title": "章节标题",\n  "content": "章节正文内容...",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 2-3 个有意义的分支选项\n2. 选项要引导故事往不同方向发展\n3. content 要写得精彩，有画面感，符合${style}风格\n4. worldState 要准确反映本章后的新状态`;
+  userPrompt += `\n\n你必须严格按以下 JSON 格式输出，不要添加任何其他文字：\n\n{\n  "title": "章节标题",\n  "content": "章节正文内容...",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 2-3 个有意义的分支选项\n2. 选项要引导故事往不同方向发展\n3. content 要写得精彩，有画面感，符合${style}风格\n4. worldState 要准确反映本章后的新状态
+5. 正文中不要出现emoji、特殊符号或不可读的字符，保持纯文字叙述
+6. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 的 storyTitle 字段中`;
 
-  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。\n你的输出必须是严格的 JSON 格式，不要有任何 markdown 代码块标记或额外文字。\n确保 JSON 格式合法，可以直接被 JSON.parse 解析。`;
+  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。\n你的输出必须是严格的 JSON 格式，不要有任何 markdown 代码块标记或额外文字。\n确保 JSON 格式合法，可以直接被 JSON.parse 解析。
+正文中不要出现emoji、特殊符号或不可读的字符。`;
 
   let rawResponse: string;
   try {
@@ -326,6 +329,7 @@ export async function generateNextChapter(
       atmosphere: '',
     },
     isFinale,
+    storyTitle: (parsed.storyTitle as string) || undefined,
   };
 }
 
@@ -340,7 +344,7 @@ export async function generateNextChapterStream(
   lengthPreference?: StoryLength,
   currentChapterNumber = 1,
   maxChapters?: number
-): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState; isFinale: boolean }> {
+): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState; isFinale: boolean; storyTitle?: string }> {
   if (MOCK_MODE) {
     const result = generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
     onChunk(result.content);
@@ -366,9 +370,11 @@ export async function generateNextChapterStream(
     userPrompt += `\n\n${getPacingHint(lengthPreference, currentChapterNumber, maxChapters)}`;
   }
 
-  userPrompt += `\n\n**字数要求：严格控制在 800-1200 字之间。不得少于 800 字，不要超过 1500 字。**\n**节奏要求：${previousChapter ? '本章是故事的中间章节，请保持剧情推进，留有悬念，不要在此处完结。' : '作为开场，需要建立世界观、引入核心冲突，并埋下后续伏笔。'}**\n\n你必须严格按以下格式输出：\n\n1. 先写章节正文内容（精彩、有画面感、符合${style}风格）\n2. 正文结束后，单独一行输出分隔符：###META###\n3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：\n\n###META###\n{\n  "title": "章节标题",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 2-3 个有意义的分支选项\n2. 选项要引导故事往不同方向发展\n3. content 要写得精彩，有画面感，符合${style}风格，严格 800-1200 字\n4. worldState 要准确反映本章后的新状态\n5. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记`;
+  userPrompt += `\n\n**字数要求：严格控制在 800-1200 字之间。不得少于 800 字，不要超过 1500 字。**\n**节奏要求：${previousChapter ? '本章是故事的中间章节，请保持剧情推进，留有悬念，不要在此处完结。' : '作为开场，需要建立世界观、引入核心冲突，并埋下后续伏笔。'}**\n\n你必须严格按以下格式输出：\n\n1. 先写章节正文内容（精彩、有画面感、符合${style}风格）\n2. 正文结束后，单独一行输出分隔符：###META###\n3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：\n\n###META###\n{\n  "title": "章节标题",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 2-3 个有意义的分支选项\n2. 选项要引导故事往不同方向发展\n3. content 要写得精彩，有画面感，符合${style}风格，严格 800-1200 字\n4. worldState 要准确反映本章后的新状态\n5. 正文中不要出现emoji、特殊符号或不可读的字符，保持纯文字叙述
+6. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 元数据的 storyTitle 字段中
+7. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记`;
 
-  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。\n请严格按照要求的格式输出：先写正文，然后换行输出 ###META###，再输出 JSON 元数据。\n确保 JSON 格式合法。`;
+  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。\n请严格按照要求的格式输出：先写正文，然后换行输出 ###META###，再输出 JSON 元数据。\n确保 JSON 格式合法。\n正文中不要出现emoji、特殊符号或不可读的字符。`;
 
   let accumulated = '';
   let contentEmitted = 0;
@@ -440,12 +446,15 @@ export async function generateNextChapterStream(
     atmosphere: '',
   };
 
+  let generatedStoryTitle: string | undefined;
+
   if (metaStr) {
     const parsed = safeParseJSON(metaStr) as Record<string, unknown> | null;
     if (parsed && typeof parsed === 'object') {
       title = (parsed.title as string) || title;
       choices = (parsed.choices as ChoiceOption[]) || [];
       worldState = (parsed.worldState as WorldState) || worldState;
+      generatedStoryTitle = (parsed.storyTitle as string) || undefined;
     }
   }
 
@@ -456,10 +465,11 @@ export async function generateNextChapterStream(
       title = (parsed.title as string) || title;
       choices = (parsed.choices as ChoiceOption[]) || [];
       worldState = (parsed.worldState as WorldState) || worldState;
+      generatedStoryTitle = (parsed.storyTitle as string) || undefined;
     }
   }
 
-  return { title, content, choices, worldState, isFinale };
+  return { title, content, choices, worldState, isFinale, storyTitle: generatedStoryTitle };
 }
 
 // ===== 世界状态总结 =====
@@ -532,6 +542,17 @@ export const randomPrompts: string[] = [
   '你的血能治愈丧尸化，但每救一个人，你就会失去一段记忆。当你救完最后一个人时，你发现自己不记得为什么要救他们了...',
 ];
 
-export function getRandomPrompt(): string {
-  return randomPrompts[Math.floor(Math.random() * randomPrompts.length)];
+const genreByIndex: StoryStyle[] = [
+  '古风', '古风', '古风', '古风', '古风',
+  '科幻', '科幻', '科幻', '科幻', '科幻',
+  '悬疑', '悬疑', '悬疑', '悬疑', '悬疑',
+  '言情', '言情', '言情', '言情', '言情',
+  '职场', '职场', '职场', '职场', '职场',
+  '无限流', '无限流', '无限流', '无限流', '无限流',
+  '末日', '末日', '末日', '末日', '末日',
+];
+
+export function getRandomPrompt(): { prompt: string; genre: StoryStyle } {
+  const idx = Math.floor(Math.random() * randomPrompts.length);
+  return { prompt: randomPrompts[idx], genre: genreByIndex[idx] };
 }

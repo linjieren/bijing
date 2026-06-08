@@ -95,6 +95,14 @@ export async function updateStoryStatus(
   return result.rows[0] || null;
 }
 
+export async function updateStoryTitle(id: string, title: string): Promise<Story | null> {
+  const result = await query<Story>(
+    'UPDATE stories SET title = $1 WHERE id = $2 RETURNING *',
+    [title, id]
+  );
+  return result.rows[0] || null;
+}
+
 export async function publishStory(
   id: string,
   authorId: string

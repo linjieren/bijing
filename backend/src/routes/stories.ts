@@ -96,8 +96,8 @@ router.get('/favorited', async (req: Request, res: Response) => {
 
 // GET /api/stories/random-prompt — 随机设定（必须在 /:id 之前）
 router.get('/random-prompt', (_req: Request, res: Response) => {
-  const prompt = aiService.getRandomPrompt();
-  success(res, { prompt });
+  const result = aiService.getRandomPrompt();
+  success(res, { prompt: result.prompt, genre: result.genre });
 });
 
 // GET /api/stories/:id — 获取故事详情和全部章节
@@ -209,6 +209,11 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
         isFinale
       );
 
+      // 如果是第一章且 AI 生成了故事标题，更新故事标题
+      if (!previousChapter && generated.storyTitle) {
+        await storyService.updateStoryTitle(storyId, generated.storyTitle);
+      }
+
       // 如果完结，更新故事状态
       if (isFinale) {
         await storyService.updateStoryStatus(storyId, 'completed');
@@ -252,6 +257,11 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
       generated.worldState,
       isFinale
     );
+
+    // 如果是第一章且 AI 生成了故事标题，更新故事标题
+    if (!previousChapter && generated.storyTitle) {
+      await storyService.updateStoryTitle(storyId, generated.storyTitle);
+    }
 
     // 如果完结，更新故事状态
     if (isFinale) {

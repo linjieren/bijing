@@ -77,8 +77,8 @@ export default function LoginModal({ isOpen, onClose, onSuccess, title }: LoginM
       const json = await res.json()
       if (json.success) {
         startCountdown()
-        if (json.data?.code) {
-          setSentCode(json.data.code)
+        if (json.data?.mockCode) {
+          setSentCode(json.data.mockCode)
         }
       } else {
         setError(json.error?.message || '发送失败')

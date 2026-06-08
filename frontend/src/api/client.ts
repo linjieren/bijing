@@ -344,8 +344,8 @@ export async function toggleBookmark(storyId: string): Promise<{ bookmarked: boo
 // ===== 随机设定 API =====
 
 export async function getRandomPrompt(): Promise<{ description: string; genre: StoryGenre | null }> {
-  const data = await request<{ prompt: string }>('/api/stories/random-prompt');
-  return { description: data.prompt, genre: null };
+  const data = await request<{ prompt: string; genre: string }>('/api/stories/random-prompt');
+  return { description: data.prompt, genre: STYLE_TO_GENRE[data.genre] || null };
 }
 
 // ===== 发布 API =====
