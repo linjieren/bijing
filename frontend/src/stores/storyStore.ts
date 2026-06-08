@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Story, Chapter, WorldState, ReadingProgress, StoryGenre } from '../types';
+import type { Story, Chapter, WorldState, ReadingProgress, StoryGenre, StoryLength } from '../types';
 
 interface StoryState {
   // 故事列表
@@ -13,6 +13,7 @@ interface StoryState {
   // 创作
   draftPrompt: string;
   draftGenre: StoryGenre | null;
+  draftLength: StoryLength | null;
 
   // Actions
   setStories: (stories: Story[]) => void;
@@ -22,6 +23,7 @@ interface StoryState {
   updateProgress: (storyId: string, chapter: number, choiceId: string) => void;
   setDraftPrompt: (prompt: string) => void;
   setDraftGenre: (genre: StoryGenre | null) => void;
+  setDraftLength: (length: StoryLength | null) => void;
   deleteStory: (storyId: string) => void;
   toggleLike: (storyId: string) => void;
   toggleBookmark: (storyId: string) => void;
@@ -37,6 +39,7 @@ export const useStoryStore = create<StoryState>()(
       readingProgress: {},
       draftPrompt: '',
       draftGenre: null,
+      draftLength: null,
 
       setStories: (stories) => set({ stories }),
       setCurrentStory: (story) => set({ currentStory: story }),
@@ -65,6 +68,7 @@ export const useStoryStore = create<StoryState>()(
 
       setDraftPrompt: (prompt) => set({ draftPrompt: prompt }),
       setDraftGenre: (genre) => set({ draftGenre: genre }),
+      setDraftLength: (length) => set({ draftLength: length }),
 
       deleteStory: (storyId) => {
         set({

@@ -15,6 +15,17 @@ export interface StoryGenreConfig {
   bgColor: string;
 }
 
+// 故事长度
+export type StoryLength = 'short' | 'medium' | 'long';
+
+export interface StoryLengthConfig {
+  key: StoryLength;
+  label: string;
+  chapterRange: string;
+  minChapters: number;
+  maxChapters: number;
+}
+
 // 故事
 export interface Story {
   id: string;
@@ -28,6 +39,7 @@ export interface Story {
   authorAvatarColor?: string;
   currentChapter: number;
   totalChapters: number;
+  maxChapters: number;
   progress: number; // 0-100
   lastUpdatedAt: string;
   createdAt: string;
@@ -47,6 +59,7 @@ export interface Chapter {
   title: string;
   content: string;
   choices: Choice[];
+  isFinale?: boolean;
   createdAt: string;
 }
 
@@ -96,6 +109,19 @@ export interface User {
   phone?: string;
 }
 
+// 认证用户
+export interface AuthUser {
+  id: string;
+  nickname: string;
+  avatar_color: string;
+  phone?: string;
+}
+
+export interface UserStats {
+  storiesCount: number;
+  totalLikesReceived: number;
+}
+
 // 热门设定
 export interface PromptSuggestion {
   id: string;
@@ -118,13 +144,11 @@ export interface ShareLink {
 }
 
 // 反馈
-export type FeedbackType = 'bug' | 'feature' | 'experience' | 'other';
-
-export interface Feedback {
-  id?: string;
-  type: FeedbackType;
+export interface FeedbackItem {
+  id: string;
+  type: 'bug' | 'feature' | 'experience' | 'other';
   content: string;
   screenshot?: string;
-  routePath?: string;
-  createdAt?: string;
+  pagePath?: string;
+  createdAt: string;
 }

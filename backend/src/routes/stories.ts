@@ -4,16 +4,17 @@ import * as storyService from '../services/storyService';
 import * as chapterService from '../services/chapterService';
 import * as likeService from '../services/likeService';
 import * as aiService from '../services/aiService';
-import { StoryStyle } from '../types';
+import { StoryStyle, StoryLength } from '../types';
 
 const router = Router();
 
 const VALID_STYLES: StoryStyle[] = ['古风', '科幻', '悬疑', '言情', '职场', '无限流', '末日'];
+const VALID_LENGTHS: StoryLength[] = ['short', 'medium', 'long'];
 
 // POST /api/stories — 创建新故事
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { title, setting, style } = req.body;
+    const { title, setting, style, lengthPreference } = req.body;
     const user = req.currentUser;
 
     if (!user) {
@@ -28,8 +29,12 @@ router.post('/', async (req: Request, res: Response) => {
       error(res, 400, 'INVALID_STYLE', `Style must be one of: ${VALID_STYLES.join(', ')}`);
       return;
     }
+    if (lengthPreference && !VALID_LENGTHS.includes(lengthPreference)) {
+      error(res, 400, 'INVALID_LENGTH', `Length must be one of: ${VALID_LENGTHS.join(', ')}`);
+      return;
+    }
 
-    const story = await storyService.createStory(title, setting, style, user.id);
+    const story = await storyService.createStory(title, setting, style, user.id, lengthPreference);
     success(res, story);
   } catch (err) {
     console.error('Create story error:', err);
@@ -151,6 +156,16 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
       return;
     }
 
+    // 如果故事已完结，禁止继续生成
+    if (story.status === 'completed') {
+      if (!isStream) {
+        error(res, 400, 'STORY_COMPLETED', 'Story is already completed');
+      } else {
+        res.status(400).json({ success: false, error: { code: 'STORY_COMPLETED', message: 'Story is already completed' } });
+      }
+      return;
+    }
+
     let previousChapter = null;
     if (previousChapterId) {
       previousChapter = await chapterService.getChapterById(previousChapterId);
@@ -164,6 +179,9 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
       }
     }
 
+    const currentChapterCount = story.chapters?.length || 0;
+    const nextSequence = currentChapterCount + 1;
+
     if (!isStream) {
       // 同步模式
       const generated = await aiService.generateNextChapter(
@@ -171,10 +189,15 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
         story.setting,
         story.style,
         previousChapter,
-        userChoice !== undefined ? parseInt(userChoice) : null
+        userChoice !== undefined ? parseInt(userChoice) : null,
+        story.length_preference || undefined,
+        nextSequence,
+        story.max_chapters || undefined
       );
 
-      const nextSequence = await chapterService.getNextSequence(storyId);
+      // 检测完结：AI 标记 或 硬完结（章节数达到上限）
+      const isHardFinale = story.max_chapters ? nextSequence >= story.max_chapters : false;
+      const isFinale = generated.isFinale || isHardFinale;
 
       const chapter = await chapterService.createChapter(
         storyId,
@@ -182,10 +205,16 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
         generated.title,
         generated.content,
         generated.choices,
-        generated.worldState
+        generated.worldState,
+        isFinale
       );
 
-      success(res, chapter);
+      // 如果完结，更新故事状态
+      if (isFinale) {
+        await storyService.updateStoryStatus(storyId, 'completed');
+      }
+
+      success(res, { ...chapter, is_finale: isFinale, story_status: isFinale ? 'completed' : story.status });
       return;
     }
 
@@ -202,11 +231,17 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
       previousChapter,
       userChoice !== undefined ? parseInt(userChoice) : null,
       (chunk) => {
-        res.write(`data: ${JSON.stringify({ type: 'content', chunk })}\n\n`);
-      }
+        res.write(`data: ${JSON.stringify({ type: 'content', chunk })}
+\n`);
+      },
+      story.length_preference || undefined,
+      nextSequence,
+      story.max_chapters || undefined
     );
 
-    const nextSequence = await chapterService.getNextSequence(storyId);
+    // 检测完结
+    const isHardFinale = story.max_chapters ? nextSequence >= story.max_chapters : false;
+    const isFinale = generated.isFinale || isHardFinale;
 
     const chapter = await chapterService.createChapter(
       storyId,
@@ -214,15 +249,23 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
       generated.title,
       generated.content,
       generated.choices,
-      generated.worldState
+      generated.worldState,
+      isFinale
     );
 
-    res.write(`data: ${JSON.stringify({ type: 'done', chapter })}\n\n`);
+    // 如果完结，更新故事状态
+    if (isFinale) {
+      await storyService.updateStoryStatus(storyId, 'completed');
+    }
+
+    res.write(`data: ${JSON.stringify({ type: 'done', chapter: { ...chapter, is_finale: isFinale, story_status: isFinale ? 'completed' : story.status } })}
+\n`);
     res.end();
   } catch (err) {
     console.error('Generate chapter error:', err);
     if (req.query.stream === 'true') {
-      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to generate chapter' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to generate chapter' })}
+\n`);
       res.end();
     } else {
       error(res, 500, 'GENERATE_FAILED', 'Failed to generate chapter');

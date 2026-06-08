@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { Readable } from 'stream';
-import { Chapter, WorldState, ChoiceOption, StoryStyle } from '../types';
+import { Chapter, WorldState, ChoiceOption, StoryStyle, StoryLength } from '../types';
+import { getPacingHint } from '../utils/storyLength';
 
 const KIMI_API_KEY = process.env.KIMI_API_KEY || '';
 const KIMI_API_URL = process.env.KIMI_API_URL || 'https://api.moonshot.cn/v1/chat/completions';
@@ -257,76 +258,38 @@ export async function generateNextChapter(
   storySetting: string,
   style: StoryStyle,
   previousChapter: Chapter | null,
-  userChoiceIndex: number | null
-): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState }> {
+  userChoiceIndex: number | null,
+  lengthPreference?: StoryLength,
+  currentChapterNumber = 1,
+  maxChapters?: number
+): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState; isFinale: boolean }> {
   if (MOCK_MODE) {
-    return generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
+    const mock = generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
+    return { ...mock, isFinale: false };
   }
 
   const styleDesc = styleDescriptions[style];
 
-  let userPrompt = `你正在写一个互动式${style}网文。
-
-故事标题：${storyTitle}
-故事设定：${storySetting}
-风格要求：${styleDesc}
-
-`;
+  let userPrompt = `你正在写一个互动式${style}网文。\n\n故事标题：${storyTitle}\n故事设定：${storySetting}\n风格要求：${styleDesc}\n\n`;
 
   if (previousChapter) {
     const choiceText = userChoiceIndex !== null
       ? previousChapter.choices[userChoiceIndex]?.text || '继续故事'
       : '继续故事';
 
-    userPrompt += `上一章标题：${previousChapter.title}
-上一章内容概要：${previousChapter.content.substring(0, 500)}...
-
-用户的选择是："${choiceText}"
-
-当前世界状态：
-${JSON.stringify(previousChapter.world_state, null, 2)}
-
-请根据用户的选择，续写下一章。
-**字数要求：严格控制在 800-1200 字之间。不得少于 800 字，不要超过 1500 字。**
-**节奏要求：本章是故事的中间章节，请保持剧情推进，留有悬念，不要在此处完结。**`;
+    userPrompt += `上一章标题：${previousChapter.title}\n上一章内容概要：${previousChapter.content.substring(0, 500)}...\n\n用户的选择是："${choiceText}"\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择，续写下一章（约800-1200字），并更新世界状态。`;
   } else {
-    userPrompt += `这是故事的第一章（开场）。
-**字数要求：严格控制在 800-1200 字之间。不得少于 800 字，不要超过 1500 字。**
-**节奏要求：作为开场，需要建立世界观、引入核心冲突，并埋下后续伏笔。**
-请根据设定展开故事。`;
+    userPrompt += `这是故事的第一章（开场），约800-1200字。请根据设定展开故事。`;
   }
 
-  userPrompt += `
-
-你必须严格按以下 JSON 格式输出，不要添加任何其他文字：
-
-{
-  "title": "章节标题",
-  "content": "章节正文内容...",
-  "choices": [
-    { "id": "1", "text": "选项1描述" },
-    { "id": "2", "text": "选项2描述" },
-    { "id": "3", "text": "选项3描述" }
-  ],
-  "worldState": {
-    "characters": [
-      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }
-    ],
-    "keyEvents": ["关键事件1", "关键事件2"],
-    "currentScene": "当前场景描述",
-    "atmosphere": "当前氛围"
+  // 注入篇幅节奏控制
+  if (lengthPreference && maxChapters && maxChapters > 0) {
+    userPrompt += `\n\n${getPacingHint(lengthPreference, currentChapterNumber, maxChapters)}`;
   }
-}
 
-要求：
-1. choices 必须提供 2-3 个有意义的分支选项
-2. 选项要引导故事往不同方向发展
-3. content 要写得精彩，有画面感，符合${style}风格，**严格 800-1200 字**
-4. worldState 要准确反映本章后的新状态`;
+  userPrompt += `\n\n你必须严格按以下 JSON 格式输出，不要添加任何其他文字：\n\n{\n  "title": "章节标题",\n  "content": "章节正文内容...",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 2-3 个有意义的分支选项\n2. 选项要引导故事往不同方向发展\n3. content 要写得精彩，有画面感，符合${style}风格\n4. worldState 要准确反映本章后的新状态`;
 
-  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。
-你的输出必须是严格的 JSON 格式，不要有任何 markdown 代码块标记或额外文字。
-确保 JSON 格式合法，可以直接被 JSON.parse 解析。`;
+  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。\n你的输出必须是严格的 JSON 格式，不要有任何 markdown 代码块标记或额外文字。\n确保 JSON 格式合法，可以直接被 JSON.parse 解析。`;
 
   let rawResponse: string;
   try {
@@ -336,10 +299,15 @@ ${JSON.stringify(previousChapter.world_state, null, 2)}
     ]);
   } catch (err) {
     if (err instanceof KimiApiError) {
-      return generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
+      const mock = generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
+      return { ...mock, isFinale: false };
     }
     throw err;
   }
+
+  // 检测 ###FINALE### 标记
+  const isFinale = rawResponse.includes('###FINALE###');
+  rawResponse = rawResponse.replace(/###FINALE###/g, '').trim();
 
   // 解析响应
   const parsed = safeParseJSON(rawResponse) as Record<string, unknown> | null;
@@ -357,6 +325,7 @@ ${JSON.stringify(previousChapter.world_state, null, 2)}
       currentScene: '',
       atmosphere: '',
     },
+    isFinale,
   };
 }
 
@@ -367,80 +336,39 @@ export async function generateNextChapterStream(
   style: StoryStyle,
   previousChapter: Chapter | null,
   userChoiceIndex: number | null,
-  onChunk: (chunk: string) => void
-): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState }> {
+  onChunk: (chunk: string) => void,
+  lengthPreference?: StoryLength,
+  currentChapterNumber = 1,
+  maxChapters?: number
+): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState; isFinale: boolean }> {
   if (MOCK_MODE) {
     const result = generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
     onChunk(result.content);
-    return result;
+    return { ...result, isFinale: false };
   }
 
   const styleDesc = styleDescriptions[style];
 
-  let userPrompt = `你正在写一个互动式${style}网文。
-
-故事标题：${storyTitle}
-故事设定：${storySetting}
-风格要求：${styleDesc}
-
-`;
+  let userPrompt = `你正在写一个互动式${style}网文。\n\n故事标题：${storyTitle}\n故事设定：${storySetting}\n风格要求：${styleDesc}\n\n`;
 
   if (previousChapter) {
     const choiceText = userChoiceIndex !== null
       ? previousChapter.choices[userChoiceIndex]?.text || '继续故事'
       : '继续故事';
 
-    userPrompt += `上一章标题：${previousChapter.title}
-上一章内容概要：${previousChapter.content.substring(0, 500)}...
-
-用户的选择是："${choiceText}"
-
-当前世界状态：
-${JSON.stringify(previousChapter.world_state, null, 2)}
-
-请根据用户的选择，续写下一章。`;
+    userPrompt += `上一章标题：${previousChapter.title}\n上一章内容概要：${previousChapter.content.substring(0, 500)}...\n\n用户的选择是："${choiceText}"\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择，续写下一章。`;
   } else {
     userPrompt += `这是故事的第一章（开场）。请根据设定展开故事。`;
   }
 
-  userPrompt += `
-**字数要求：严格控制在 800-1200 字之间。不得少于 800 字，不要超过 1500 字。**
-**节奏要求：${previousChapter ? '本章是故事的中间章节，请保持剧情推进，留有悬念，不要在此处完结。' : '作为开场，需要建立世界观、引入核心冲突，并埋下后续伏笔。'}**
-
-你必须严格按以下格式输出：
-
-1. 先写章节正文内容（精彩、有画面感、符合${style}风格）
-2. 正文结束后，单独一行输出分隔符：###META###
-3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：
-
-###META###
-{
-  "title": "章节标题",
-  "choices": [
-    { "id": "1", "text": "选项1描述" },
-    { "id": "2", "text": "选项2描述" },
-    { "id": "3", "text": "选项3描述" }
-  ],
-  "worldState": {
-    "characters": [
-      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }
-    ],
-    "keyEvents": ["关键事件1", "关键事件2"],
-    "currentScene": "当前场景描述",
-    "atmosphere": "当前氛围"
+  // 注入篇幅节奏控制（流式模式也支持）
+  if (lengthPreference && maxChapters && maxChapters > 0) {
+    userPrompt += `\n\n${getPacingHint(lengthPreference, currentChapterNumber, maxChapters)}`;
   }
-}
 
-要求：
-1. choices 必须提供 2-3 个有意义的分支选项
-2. 选项要引导故事往不同方向发展
-3. content 要写得精彩，有画面感，符合${style}风格，严格 800-1200 字
-4. worldState 要准确反映本章后的新状态
-5. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记`;
+  userPrompt += `\n\n**字数要求：严格控制在 800-1200 字之间。不得少于 800 字，不要超过 1500 字。**\n**节奏要求：${previousChapter ? '本章是故事的中间章节，请保持剧情推进，留有悬念，不要在此处完结。' : '作为开场，需要建立世界观、引入核心冲突，并埋下后续伏笔。'}**\n\n你必须严格按以下格式输出：\n\n1. 先写章节正文内容（精彩、有画面感、符合${style}风格）\n2. 正文结束后，单独一行输出分隔符：###META###\n3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：\n\n###META###\n{\n  "title": "章节标题",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 2-3 个有意义的分支选项\n2. 选项要引导故事往不同方向发展\n3. content 要写得精彩，有画面感，符合${style}风格，严格 800-1200 字\n4. worldState 要准确反映本章后的新状态\n5. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记`;
 
-  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。
-请严格按照要求的格式输出：先写正文，然后换行输出 ###META###，再输出 JSON 元数据。
-确保 JSON 格式合法。`;
+  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。\n请严格按照要求的格式输出：先写正文，然后换行输出 ###META###，再输出 JSON 元数据。\n确保 JSON 格式合法。`;
 
   let accumulated = '';
   let contentEmitted = 0;
@@ -474,7 +402,7 @@ ${JSON.stringify(previousChapter.world_state, null, 2)}
     if (err instanceof KimiApiError) {
       const result = generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
       onChunk(result.content);
-      return result;
+      return { ...result, isFinale: false };
     }
     throw err;
   }
@@ -495,6 +423,12 @@ ${JSON.stringify(previousChapter.world_state, null, 2)}
     if (contentEmitted < accumulated.length) {
       onChunk(accumulated.slice(contentEmitted));
     }
+  }
+
+  // 检测 ###FINALE### 标记
+  const isFinale = content.includes('###FINALE###');
+  if (isFinale) {
+    content = content.replace(/###FINALE###/g, '').trim();
   }
 
   let title = '未命名章节';
@@ -525,7 +459,7 @@ ${JSON.stringify(previousChapter.world_state, null, 2)}
     }
   }
 
-  return { title, content, choices, worldState };
+  return { title, content, choices, worldState, isFinale };
 }
 
 // ===== 世界状态总结 =====
@@ -537,26 +471,7 @@ export async function summarizeWorldState(
 ): Promise<WorldState> {
   const styleDesc = styleDescriptions[style];
 
-  const userPrompt = `你是一个专业的网文世界观管理助手。
-
-故事：${storyTitle}
-风格：${styleDesc}
-
-上一章内容：${chapterContent.substring(0, 1000)}
-
-之前的世界状态：
-${JSON.stringify(previousWorldState, null, 2)}
-
-请总结本章对世界状态的影响，输出更新后的世界状态。严格按 JSON 格式：
-
-{
-  "characters": [
-    { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }
-  ],
-  "keyEvents": ["关键事件1", "关键事件2"],
-  "currentScene": "当前场景",
-  "atmosphere": "当前氛围"
-}`;
+  const userPrompt = `你是一个专业的网文世界观管理助手。\n\n故事：${storyTitle}\n风格：${styleDesc}\n\n上一章内容：${chapterContent.substring(0, 1000)}\n\n之前的世界状态：\n${JSON.stringify(previousWorldState, null, 2)}\n\n请总结本章对世界状态的影响，输出更新后的世界状态。严格按 JSON 格式：\n\n{\n  "characters": [\n    { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n  ],\n  "keyEvents": ["关键事件1", "关键事件2"],\n  "currentScene": "当前场景",\n  "atmosphere": "当前氛围"\n}`;
 
   const rawResponse = await callKimi([
     { role: 'system', content: '你是一个专业的网文世界观管理助手。输出必须是严格 JSON 格式。' },

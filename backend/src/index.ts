@@ -11,6 +11,8 @@ import shareRoutes from './routes/share';
 import squareRoutes from './routes/square';
 import feedbackRoutes from './routes/feedback';
 import authRoutes from './routes/auth';
+import eventsRoutes from './routes/events';
+import usersRoutes from './routes/users';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -59,6 +61,8 @@ app.use('/api/share', shareRoutes);
 app.use('/api/square', squareRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/events', eventsRoutes);
+app.use('/api/users', usersRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
