@@ -410,9 +410,24 @@ export default function ReaderPage() {
             transition={{ duration: 0.3 }}
           >
             {/* Chapter title */}
-            <h1 className="text-lg font-bold text-text-primary mb-6 text-center">
+            <h1 className="text-lg font-bold text-text-primary mb-2 text-center">
               {activeChapter.title}
             </h1>
+
+            {/* Author */}
+            {story && (
+              <div className="flex items-center justify-center gap-2 mb-6">
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                  style={{ backgroundColor: story.authorAvatarColor || '#6b6b80' }}
+                >
+                  {(story.authorNickname || story.authorName || '匿')[0]}
+                </div>
+                <span className="text-xs text-text-muted">
+                  {story.authorNickname || story.authorName || '匿名读者'}
+                </span>
+              </div>
+            )}
 
             {/* Content */}
             <div className="text-[15px] leading-[1.9] text-text-secondary font-serif">
