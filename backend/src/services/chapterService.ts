@@ -7,13 +7,14 @@ export async function createChapter(
   title: string,
   content: string,
   choices: ChoiceOption[],
-  worldState: WorldState
+  worldState: WorldState,
+  isFinale = false
 ): Promise<Chapter> {
   const result = await query<Chapter>(
-    `INSERT INTO chapters (story_id, sequence, title, content, choices, world_state)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO chapters (story_id, sequence, title, content, choices, world_state, is_finale)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [storyId, sequence, title, content, JSON.stringify(choices), JSON.stringify(worldState)]
+    [storyId, sequence, title, content, JSON.stringify(choices), JSON.stringify(worldState), isFinale]
   );
   return result.rows[0];
 }

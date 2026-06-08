@@ -1,17 +1,25 @@
 import { query, transaction } from '../db';
-import { Story, StoryWithChapters, Chapter, StoryListQuery, StoryStyle } from '../types';
+import { Story, StoryWithChapters, Chapter, StoryListQuery, StoryStyle, StoryLength } from '../types';
 
 export async function createStory(
   title: string,
   setting: string,
   style: StoryStyle,
-  authorId: string
+  authorId: string,
+  lengthPreference?: StoryLength
 ): Promise<Story> {
+  let maxChapters: number | null = null;
+  if (lengthPreference) {
+    const ranges: Record<StoryLength, [number, number]> = { short: [5, 8], medium: [12, 18], long: [20, 30] };
+    const range = ranges[lengthPreference];
+    maxChapters = Math.floor(Math.random() * (range[1] - range[0] + 1)) + range[0];
+  }
+
   const result = await query<Story>(
-    `INSERT INTO stories (title, setting, style, author_id)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO stories (title, setting, style, author_id, length_preference, max_chapters)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [title, setting, style, authorId]
+    [title, setting, style, authorId, lengthPreference || null, maxChapters]
   );
   return result.rows[0];
 }

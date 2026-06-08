@@ -13,6 +13,7 @@ export interface User {
 
 export type StoryStyle = '古风' | '科幻' | '悬疑' | '言情' | '职场' | '无限流' | '末日';
 export type StoryStatus = 'ongoing' | 'completed' | 'abandoned';
+export type StoryLength = 'short' | 'medium' | 'long';
 
 export interface Story {
   id: string;
@@ -24,6 +25,9 @@ export interface Story {
   author_nickname?: string;
   author_avatar_color?: string;
   status: StoryStatus;
+  is_public: boolean;
+  length_preference?: StoryLength;
+  max_chapters?: number;
   likes_count: number;
   favorites_count: number;
   reads_count: number;
@@ -45,6 +49,7 @@ export interface Chapter {
   content: string;
   choices: ChoiceOption[];
   world_state: WorldState;
+  is_finale: boolean;
   created_at: Date;
 }
 
@@ -168,4 +173,36 @@ export interface StoryListQuery {
   pageSize?: number;
   category?: string;
   sort?: 'hot' | 'latest' | 'favorites';
+}
+
+// ===== 事件埋点 =====
+
+export type EventType =
+  | 'story_created'
+  | 'chapter_read'
+  | 'choice_made'
+  | 'story_abandoned'
+  | 'story_completed'
+  | 'story_shared'
+  | 'new_story_started';
+
+export interface Event {
+  id: string;
+  event_type: EventType;
+  user_id?: string;
+  story_id?: string;
+  chapter_id?: string;
+  metadata: Record<string, unknown>;
+  created_at: Date;
+}
+
+// ===== 验证码 =====
+
+export interface SMSCode {
+  id: string;
+  phone: string;
+  code: string;
+  used: boolean;
+  expires_at: Date;
+  created_at: Date;
 }
