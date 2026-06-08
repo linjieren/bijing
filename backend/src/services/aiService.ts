@@ -374,7 +374,7 @@ export async function generateNextChapterStream(
 6. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 元数据的 storyTitle 字段中
 7. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记`;
 
-  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。\n请严格按照要求的格式输出：先写正文，然后换行输出 ###META###，再输出 JSON 元数据。\n确保 JSON 格式合法。\n正文中不要出现emoji、特殊符号或不可读的字符。`;
+  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。\n请严格按照要求的格式输出：先写正文，然后换行输出 ###META###，再输出 JSON 元数据。\n确保 JSON 格式合法。\n正文中不要出现emoji、特殊符号或不可读的字符。\n元数据中的 title 字段必须有实际内容，不能为空。`;
 
   let accumulated = '';
   let contentEmitted = 0;
@@ -413,7 +413,11 @@ export async function generateNextChapterStream(
     throw err;
   }
 
-  const sepIdx = accumulated.indexOf(META_SEP);
+  // 兼容多种 ###META### 分隔符变体
+  let sepIdx = accumulated.indexOf(META_SEP);
+  if (sepIdx === -1) sepIdx = accumulated.indexOf('\n###META###');
+  if (sepIdx === -1) sepIdx = accumulated.indexOf('###META###');
+
   let content: string;
   let metaStr: string;
 
@@ -466,6 +470,17 @@ export async function generateNextChapterStream(
       choices = (parsed.choices as ChoiceOption[]) || [];
       worldState = (parsed.worldState as WorldState) || worldState;
       generatedStoryTitle = (parsed.storyTitle as string) || undefined;
+    }
+  }
+
+  // fallback: 如果 title 为空或'未命名章节'，尝试从正文第一行提取
+  if ((!title || title === '未命名章节') && content) {
+    const lines = content.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+    for (const line of lines) {
+      if (line.length >= 3 && line.length <= 30 && !line.startsWith('{') && !line.includes('###')) {
+        title = line;
+        break;
+      }
     }
   }
 
