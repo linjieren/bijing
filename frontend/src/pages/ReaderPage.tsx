@@ -1,21 +1,40 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft,
   Globe,
   BookOpenCheck,
   SkipBack,
+  Heart,
+  Bookmark,
+  Share2,
+  X,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { useStoryStore } from '../stores/storyStore'
+import { useAuthStore } from '../stores/authStore'
 import WorldDrawer from '../components/WorldDrawer'
-import { getStoryDetail, generateChapterStream } from '../api/client'
+import LoginModal from '../components/LoginModal'
+import StoryIntroAnimation from '../components/StoryIntroAnimation'
+import { getStoryDetail, generateChapterStream, toggleLike, toggleBookmark, createShareLink } from '../api/client'
+import { track } from '../utils/tracker'
 import type { Chapter, WorldState, Story } from '../types'
 
 export default function ReaderPage() {
   const { storyId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
   const { setCurrentStory, setCurrentChapter, setWorldState, updateProgress } = useStoryStore()
+
+  // Intro animation state
+  const introState = (location.state as { isNew?: boolean; title?: string; summary?: string }) || {}
+  const isNewStory = introState.isNew ?? false
+  const [showIntro, setShowIntro] = useState(isNewStory)
+  const [introFinished, setIntroFinished] = useState(false)
+
   const [showWorld, setShowWorld] = useState(false)
   const [displayedText, setDisplayedText] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -24,17 +43,27 @@ export default function ReaderPage() {
   const [chapter, setChapter] = useState<Chapter | null>(null)
   const [previewChapter, setPreviewChapter] = useState<Chapter | null>(null)
   const [world, setWorld] = useState<WorldState | null>(null)
-  const [, setStory] = useState<Story | null>(null)
+  const [story, setStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState('')
+  const [isLiked, setIsLiked] = useState(false)
+  const [isBookmarked, setIsBookmarked] = useState(false)
+  const [likes, setLikes] = useState(0)
+  const [showLogin, setShowLogin] = useState(false)
+  const [pendingAction, setPendingAction] = useState<'like' | 'bookmark' | null>(null)
+  const [showShare, setShowShare] = useState(false)
+  const [shareUrl, setShareUrl] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [isCompleted, setIsCompleted] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const skipTypewriterRef = useRef(false)
 
   // Load story and initial chapter
   useEffect(() => {
     if (!storyId) return
+    if (isNewStory && !introFinished) return
 
     let cancelled = false
 
@@ -46,6 +75,10 @@ export default function ReaderPage() {
         if (cancelled) return
         setStory(s)
         setCurrentStory(s)
+        setIsLiked(s.isLiked || false)
+        setIsBookmarked(s.isBookmarked || false)
+        setLikes(s.likes || 0)
+        setIsCompleted(s.status === 'completed')
 
         if (chapters.length === 0) {
           // Generate first chapter with streaming
@@ -81,6 +114,8 @@ export default function ReaderPage() {
           setPreviewChapter(null)
           setIsStreaming(false)
           skipTypewriterRef.current = true
+          setIsCompleted(ch.isFinale || false)
+          track('chapter_read', { storyId: sid, chapterNumber: ch.chapterNumber })
         } else {
           const last = chapters[chapters.length - 1]
           setChapter(last)
@@ -94,6 +129,7 @@ export default function ReaderPage() {
           setCurrentChapter(last)
           setWorldState(ws)
           setChapterKey((k) => k + 1)
+          setIsCompleted(s.status === 'completed' || last.isFinale || false)
         }
       } catch (err) {
         if (!cancelled) {
@@ -114,7 +150,7 @@ export default function ReaderPage() {
       cancelled = true
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [storyId, setCurrentStory, setCurrentChapter, setWorldState])
+  }, [storyId, setCurrentStory, setCurrentChapter, setWorldState, introFinished, isNewStory])
 
   // Typewriter effect
   useEffect(() => {
@@ -160,6 +196,8 @@ export default function ReaderPage() {
       setIsStreaming(true)
       setError('')
 
+      track('choice_made', { storyId, chapterNumber: chapter.chapterNumber, choiceIndex })
+
       const nextSeq = chapter.chapterNumber + 1
       setPreviewChapter({
         id: 'preview',
@@ -192,6 +230,12 @@ export default function ReaderPage() {
         setPreviewChapter(null)
         setIsStreaming(false)
         skipTypewriterRef.current = true
+
+        if (nextCh.isFinale) {
+          setIsCompleted(true)
+          track('story_completed', { storyId })
+        }
+        track('chapter_read', { storyId, chapterNumber: nextCh.chapterNumber })
       } catch (err) {
         setError(err instanceof Error ? err.message : '生成失败，请重试')
         setShowChoices(true)
@@ -208,8 +252,82 @@ export default function ReaderPage() {
     navigate(-1)
   }, [navigate])
 
+  const handleLike = useCallback(async () => {
+    if (!storyId) return
+    if (!isLoggedIn) {
+      setPendingAction('like')
+      setShowLogin(true)
+      return
+    }
+    try {
+      const result = await toggleLike(storyId)
+      setIsLiked(result.liked)
+      setLikes(result.likes)
+    } catch (err) {
+      console.error('Like failed:', err)
+    }
+  }, [storyId, isLoggedIn])
+
+  const handleBookmark = useCallback(async () => {
+    if (!storyId) return
+    if (!isLoggedIn) {
+      setPendingAction('bookmark')
+      setShowLogin(true)
+      return
+    }
+    try {
+      const result = await toggleBookmark(storyId)
+      setIsBookmarked(result.bookmarked)
+    } catch (err) {
+      console.error('Bookmark failed:', err)
+    }
+  }, [storyId, isLoggedIn])
+
+  const handleShare = useCallback(async () => {
+    if (!storyId) return
+    try {
+      const result = await createShareLink(storyId)
+      setShareUrl(result.shortUrl)
+      setShowShare(true)
+      track('story_shared', { storyId })
+    } catch (err) {
+      console.error('Share failed:', err)
+    }
+  }, [storyId])
+
+  const handleCopyLink = useCallback(() => {
+    navigator.clipboard.writeText(shareUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [shareUrl])
+
+  const handleLoginSuccess = useCallback(() => {
+    setShowLogin(false)
+    if (pendingAction === 'like') {
+      handleLike()
+    } else if (pendingAction === 'bookmark') {
+      handleBookmark()
+    }
+    setPendingAction(null)
+  }, [pendingAction, handleLike, handleBookmark])
+
   const activeChapter = previewChapter || chapter
-  const progress = activeChapter ? (activeChapter.chapterNumber / 12) * 100 : 0
+  const maxChapters = story?.maxChapters || 12
+  const progress = activeChapter ? (activeChapter.chapterNumber / maxChapters) * 100 : 0
+
+  // Show intro animation
+  if (showIntro && !introFinished) {
+    return (
+      <StoryIntroAnimation
+        title={introState.title || story?.title || '新故事'}
+        subtitle={introState.summary || story?.summary || ''}
+        onComplete={() => {
+          setShowIntro(false)
+          setIntroFinished(true)
+        }}
+      />
+    )
+  }
 
   if (loading || (generating && !isStreaming)) {
     return (
@@ -305,9 +423,32 @@ export default function ReaderPage() {
               )}
             </div>
 
+            {/* Completion panel */}
+            {isCompleted && !isStreaming && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-10 p-6 rounded-2xl bg-accent/5 border border-accent/20 text-center"
+              >
+                <BookOpenCheck size={32} className="mx-auto text-accent mb-3" />
+                <h3 className="text-base font-bold text-text-primary mb-2">故事已完结</h3>
+                <p className="text-sm text-text-secondary mb-4">
+                  这个故事已经走到了终点。你可以选择回退到之前的章节重新选择，或者开始一个新的故事。
+                </p>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => navigate('/')}
+                    className="px-4 py-2 rounded-xl bg-accent text-white text-sm font-medium"
+                  >
+                    开启新故事
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
             {/* Choices */}
             <AnimatePresence>
-              {!isStreaming && showChoices && (
+              {!isStreaming && showChoices && !isCompleted && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -355,10 +496,36 @@ export default function ReaderPage() {
             回退
           </button>
 
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleLike}
+              className={`flex items-center gap-1 px-3 py-2 rounded-lg text-xs transition-colors ${
+                isLiked ? 'text-danger bg-danger/10' : 'text-text-tertiary hover:text-text-secondary'
+              }`}
+            >
+              <Heart size={14} fill={isLiked ? 'currentColor' : 'none'} />
+              {likes > 0 && <span>{likes}</span>}
+            </button>
+            <button
+              onClick={handleBookmark}
+              className={`flex items-center gap-1 px-3 py-2 rounded-lg text-xs transition-colors ${
+                isBookmarked ? 'text-accent bg-accent/10' : 'text-text-tertiary hover:text-text-secondary'
+              }`}
+            >
+              <Bookmark size={14} fill={isBookmarked ? 'currentColor' : 'none'} />
+            </button>
+            <button
+              onClick={handleShare}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+            >
+              <Share2 size={14} />
+            </button>
+          </div>
+
           <div className="flex items-center gap-1.5 text-xs text-text-muted">
             <BookOpenCheck size={14} />
             <span>
-              {activeChapter.chapterNumber} / 12 章
+              {activeChapter.chapterNumber} / {maxChapters} 章
             </span>
           </div>
         </div>
@@ -370,6 +537,48 @@ export default function ReaderPage() {
         onClose={() => setShowWorld(false)}
         worldState={world}
       />
+
+      {/* Login Modal */}
+      <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} onSuccess={handleLoginSuccess} />
+
+      {/* Share Modal */}
+      <AnimatePresence>
+        {showShare && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center"
+            onClick={() => setShowShare(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="bg-bg w-full max-w-lg rounded-t-3xl p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-bold text-text-primary">分享故事</h3>
+                <button onClick={() => setShowShare(false)} className="p-1 rounded-full hover:bg-bg-card">
+                  <X size={18} className="text-text-secondary" />
+                </button>
+              </div>
+              <div className="p-4 rounded-xl bg-bg-card border border-border mb-4">
+                <p className="text-sm text-text-secondary break-all">{shareUrl}</p>
+              </div>
+              <button
+                onClick={handleCopyLink}
+                className="w-full py-3 rounded-xl bg-accent text-white text-sm font-medium flex items-center justify-center gap-2"
+              >
+                {copied ? <Check size={16} /> : <Copy size={16} />}
+                {copied ? '已复制' : '复制链接'}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

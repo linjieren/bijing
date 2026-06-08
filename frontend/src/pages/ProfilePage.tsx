@@ -247,7 +247,7 @@ export default function ProfilePage() {
 
       {/* Login Modal */}
       <LoginModal
-        open={loginOpen}
+        isOpen={loginOpen}
         onClose={() => {
           setLoginOpen(false)
           setPublishId(null)

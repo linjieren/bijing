@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
 import CreatePage from './pages/CreatePage'
@@ -9,8 +10,13 @@ import LoginPage from './pages/LoginPage'
 import ShareLandingPage from './pages/ShareLandingPage'
 import FeedbackButton from './components/FeedbackButton'
 import ErrorBoundary from './components/ErrorBoundary'
+import { initAuth } from './stores/authStore'
 
 function App() {
+  useEffect(() => {
+    initAuth()
+  }, [])
+
   return (
     <ErrorBoundary>
       <Routes>

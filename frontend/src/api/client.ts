@@ -33,13 +33,24 @@ function getAnonymousId(): string {
   return id;
 }
 
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Anonymous-Id': getAnonymousId(),
+  };
+  const token = localStorage.getItem('bijing-auth-token');
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
   const res = await fetch(url, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
-      'X-Anonymous-Id': getAnonymousId(),
+      ...getAuthHeaders(),
       ...options?.headers,
     },
   });
@@ -75,6 +86,10 @@ export interface BackendStory {
   likes_count: number;
   favorites_count: number;
   reads_count: number;
+  is_liked?: boolean;
+  is_bookmarked?: boolean;
+  max_chapters?: number;
+  length_preference?: string;
   created_at: string;
   updated_at: string;
   chapters?: BackendChapter[];
@@ -87,6 +102,7 @@ export interface BackendChapter {
   title: string;
   content: string;
   choices: { id: string; text: string }[];
+  is_finale?: boolean;
   world_state: {
     characters: { name: string; relationship: string; status: string }[];
     keyEvents: string[];
@@ -99,7 +115,8 @@ export interface BackendChapter {
 function mapBackendStory(bs: BackendStory): Story {
   const totalChapters = bs.chapters?.length || 1;
   const currentChapter = bs.chapters?.length || 0;
-  const progress = totalChapters > 0 ? Math.round((currentChapter / totalChapters) * 100) : 0;
+  const maxChapters = bs.max_chapters || 12;
+  const progress = maxChapters > 0 ? Math.round((currentChapter / maxChapters) * 100) : 0;
 
   return {
     id: bs.id,
@@ -112,14 +129,15 @@ function mapBackendStory(bs: BackendStory): Story {
     authorAvatarColor: bs.author_avatar_color,
     currentChapter: Math.max(1, currentChapter),
     totalChapters: Math.max(1, totalChapters),
+    maxChapters,
     progress: Math.min(100, progress),
     lastUpdatedAt: bs.updated_at,
     createdAt: bs.created_at,
     status: bs.status === 'abandoned' ? 'paused' : bs.status === 'completed' ? 'completed' : 'reading',
     likes: bs.likes_count || 0,
     bookmarks: bs.favorites_count || 0,
-    isLiked: false,
-    isBookmarked: false,
+    isLiked: bs.is_liked || false,
+    isBookmarked: bs.is_bookmarked || false,
     isPublic: bs.is_public ?? false,
   };
 }
@@ -132,6 +150,7 @@ function mapBackendChapter(bc: BackendChapter): Chapter {
     title: bc.title,
     content: bc.content,
     choices: bc.choices.map((c) => ({ id: c.id, text: c.text })),
+    isFinale: bc.is_finale || false,
     createdAt: bc.created_at,
   };
 }
@@ -159,15 +178,19 @@ function mapBackendWorldState(
   };
 }
 
-export async function createStory(payload: { prompt: string; genre: StoryGenre }): Promise<Story> {
+export async function createStory(payload: { prompt: string; genre: StoryGenre; lengthPreference?: string }): Promise<Story> {
   const title = payload.prompt.slice(0, 30).trim() + (payload.prompt.length > 30 ? '…' : '');
+  const body: Record<string, string> = {
+    title,
+    setting: payload.prompt,
+    style: GENRE_TO_STYLE[payload.genre],
+  };
+  if (payload.lengthPreference) {
+    body.length_preference = payload.lengthPreference;
+  }
   const data = await request<BackendStory>('/api/stories', {
     method: 'POST',
-    body: JSON.stringify({
-      title,
-      setting: payload.prompt,
-      style: GENRE_TO_STYLE[payload.genre],
-    }),
+    body: JSON.stringify(body),
   });
   return mapBackendStory(data);
 }

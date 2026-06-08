@@ -73,6 +73,7 @@ export const mockStories: Story[] = [
     bookmarks: 45,
     isLiked: false,
     isBookmarked: true,
+    maxChapters: 12,
   },
   {
     id: 's2',
@@ -91,6 +92,7 @@ export const mockStories: Story[] = [
     bookmarks: 89,
     isLiked: true,
     isBookmarked: false,
+    maxChapters: 8,
   },
   {
     id: 's3',
@@ -109,6 +111,7 @@ export const mockStories: Story[] = [
     bookmarks: 167,
     isLiked: false,
     isBookmarked: false,
+    maxChapters: 15,
   },
 ];
 

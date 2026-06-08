@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS stories (
   author_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   status VARCHAR(32) DEFAULT 'ongoing' CHECK (status IN ('ongoing', 'completed', 'abandoned')),
   is_public BOOLEAN DEFAULT FALSE,
+  length_preference VARCHAR(16) CHECK (length_preference IN ('short', 'medium', 'long')),
+  max_chapters INTEGER,
   likes_count INTEGER DEFAULT 0,
   favorites_count INTEGER DEFAULT 0,
   reads_count INTEGER DEFAULT 0,
@@ -47,6 +49,7 @@ CREATE TABLE IF NOT EXISTS chapters (
   content TEXT NOT NULL,
   choices JSONB NOT NULL DEFAULT '[]',
   world_state JSONB NOT NULL DEFAULT '{}',
+  is_finale BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -128,6 +131,21 @@ CREATE TABLE IF NOT EXISTS verification_codes (
 
 CREATE INDEX IF NOT EXISTS idx_verification_codes_phone ON verification_codes(phone);
 CREATE INDEX IF NOT EXISTS idx_verification_codes_expires ON verification_codes(expires_at);
+
+-- ===== 事件埋点表 =====
+CREATE TABLE IF NOT EXISTS events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  event_type VARCHAR(32) NOT NULL,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  story_id UUID REFERENCES stories(id) ON DELETE SET NULL,
+  chapter_id UUID REFERENCES chapters(id) ON DELETE SET NULL,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_story ON events(story_id, event_type);
 
 -- ===== 更新触发器：自动更新 stories.updated_at =====
 CREATE OR REPLACE FUNCTION update_updated_at_column()

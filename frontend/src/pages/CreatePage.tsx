@@ -17,7 +17,8 @@ import {
 import { useStoryStore } from '../stores/storyStore'
 import { genreConfigs, promptSuggestions } from '../data/mock'
 import { createStory, getRandomPrompt } from '../api/client'
-import type { StoryGenre } from '../types'
+import { track } from '../utils/tracker'
+import type { StoryGenre, StoryLength } from '../types'
 
 const genreIcons: Record<StoryGenre, typeof BookOpen> = {
   ancient: BookOpen,
@@ -29,26 +30,58 @@ const genreIcons: Record<StoryGenre, typeof BookOpen> = {
   apocalypse: Skull,
 }
 
+const lengthConfigs: { key: StoryLength; label: string; chapterRange: string }[] = [
+  { key: 'short', label: '短篇', chapterRange: '5-8 章' },
+  { key: 'medium', label: '中篇', chapterRange: '12-18 章' },
+  { key: 'long', label: '长篇', chapterRange: '20-30 章' },
+]
+
+const genreToDefaultLength: Record<StoryGenre, StoryLength> = {
+  suspense: 'short',
+  infinite: 'short',
+  romance: 'medium',
+  workplace: 'medium',
+  ancient: 'long',
+  scifi: 'long',
+  apocalypse: 'long',
+}
+
 export default function CreatePage() {
   const navigate = useNavigate()
-  const { draftPrompt, draftGenre, setDraftPrompt, setDraftGenre } = useStoryStore()
+  const { draftPrompt, draftGenre, draftLength, setDraftPrompt, setDraftGenre, setDraftLength } = useStoryStore()
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [isRandomLoading, setIsRandomLoading] = useState(false)
+  const [hasManualLength, setHasManualLength] = useState(false)
 
   const handleGenreSelect = useCallback(
     (genre: StoryGenre) => {
-      setDraftGenre(draftGenre === genre ? null : genre)
+      const newGenre = draftGenre === genre ? null : genre
+      setDraftGenre(newGenre)
+      if (newGenre && !hasManualLength) {
+        setDraftLength(genreToDefaultLength[newGenre])
+      }
     },
-    [draftGenre, setDraftGenre]
+    [draftGenre, setDraftGenre, hasManualLength, setDraftLength]
+  )
+
+  const handleLengthSelect = useCallback(
+    (length: StoryLength) => {
+      setDraftLength(draftLength === length ? null : length)
+      setHasManualLength(true)
+    },
+    [draftLength, setDraftLength]
   )
 
   const handleSuggestionClick = useCallback(
     (suggestion: (typeof promptSuggestions)[0]) => {
       setDraftPrompt(suggestion.description)
       setDraftGenre(suggestion.genre)
+      if (!hasManualLength) {
+        setDraftLength(genreToDefaultLength[suggestion.genre])
+      }
     },
-    [setDraftPrompt, setDraftGenre]
+    [setDraftPrompt, setDraftGenre, setDraftLength, hasManualLength]
   )
 
   const handleRandom = useCallback(async () => {
@@ -56,29 +89,42 @@ export default function CreatePage() {
     try {
       const random = await getRandomPrompt()
       setDraftPrompt(random.description)
-      setDraftGenre(random.genre)
+      if (random.genre) {
+        setDraftGenre(random.genre)
+        if (!hasManualLength) {
+          setDraftLength(genreToDefaultLength[random.genre])
+        }
+      }
     } catch {
       // fallback to local mock
       const fallback = promptSuggestions[Math.floor(Math.random() * promptSuggestions.length)]
       setDraftPrompt(fallback.description)
       setDraftGenre(fallback.genre)
+      if (!hasManualLength) {
+        setDraftLength(genreToDefaultLength[fallback.genre])
+      }
     } finally {
       setIsRandomLoading(false)
     }
-  }, [setDraftPrompt, setDraftGenre])
+  }, [setDraftPrompt, setDraftGenre, setDraftLength, hasManualLength])
 
   const handleCreate = useCallback(async () => {
     if (!draftPrompt.trim() || !draftGenre || isCreating) return
     setIsCreating(true)
     try {
-      const story = await createStory({ prompt: draftPrompt.trim(), genre: draftGenre })
-      navigate(`/reader/${story.id}`)
+      const story = await createStory({
+        prompt: draftPrompt.trim(),
+        genre: draftGenre,
+        lengthPreference: draftLength || undefined,
+      })
+      track('story_created', { genre: draftGenre, promptLength: draftPrompt.trim().length, length: draftLength })
+      navigate(`/reader/${story.id}`, { state: { isNew: true, title: story.title, summary: story.summary } })
     } catch (err) {
       alert(err instanceof Error ? err.message : '创建失败，请重试')
     } finally {
       setIsCreating(false)
     }
-  }, [draftPrompt, draftGenre, isCreating, navigate])
+  }, [draftPrompt, draftGenre, draftLength, isCreating, navigate])
 
   const filteredSuggestions = draftGenre
     ? promptSuggestions.filter((s) => s.genre === draftGenre)
@@ -146,6 +192,32 @@ export default function CreatePage() {
               >
                 <Icon size={14} />
                 {genre.label}
+              </motion.button>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* Length Selector */}
+      <section className="px-5 mb-6">
+        <p className="text-xs text-text-tertiary mb-3">故事长度</p>
+        <div className="grid grid-cols-3 gap-2">
+          {lengthConfigs.map((length) => {
+            const isSelected = draftLength === length.key
+            return (
+              <motion.button
+                key={length.key}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handleLengthSelect(length.key)}
+                className={`flex flex-col items-center gap-1 p-3 rounded-2xl text-xs font-medium
+                           transition-all border ${
+                             isSelected
+                               ? 'bg-accent/10 border-accent text-accent'
+                               : 'bg-bg-card border-border text-text-secondary'
+                           }`}
+              >
+                <span className="text-sm">{length.label}</span>
+                <span className="text-[10px] opacity-70">{length.chapterRange}</span>
               </motion.button>
             )
           })}

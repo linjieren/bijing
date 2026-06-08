@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { Compass, PlusCircle, User } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { track } from '../utils/tracker';
 
 const navItems = [
   { path: '/community', icon: Compass, label: '广场' },
@@ -10,8 +11,8 @@ const navItems = [
 
 export default function BottomNav() {
   const location = useLocation();
-  // 阅读器页面隐藏底部导航
-  if (location.pathname.startsWith('/reader/')) return null;
+  // 阅读器页面和登录页隐藏底部导航
+  if (location.pathname.startsWith('/reader/') || location.pathname === '/login') return null;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-bg/90 backdrop-blur-xl border-t border-border safe-area-bottom">
@@ -20,6 +21,11 @@ export default function BottomNav() {
           <NavLink
             key={item.path}
             to={item.path}
+            onClick={() => {
+              if (item.path === '/') {
+                track('new_story_started');
+              }
+            }}
             className={({ isActive }) =>
               `flex flex-col items-center justify-center gap-0.5 w-16 h-full transition-colors ${
                 isActive ? 'text-accent' : 'text-text-tertiary'
