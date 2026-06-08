@@ -75,7 +75,7 @@ class KimiApiError extends Error {
   }
 }
 
-async function callKimi(messages: KimiMessage[], temperature = 0.8): Promise<string> {
+async function callKimi(messages: KimiMessage[], temperature = 0.8, maxTokens = 4000): Promise<string> {
   if (!KIMI_API_KEY) {
     throw new KimiApiError('KIMI_API_KEY not configured');
   }
@@ -95,7 +95,7 @@ async function callKimi(messages: KimiMessage[], temperature = 0.8): Promise<str
         model: KIMI_MODEL,
         messages,
         temperature,
-        max_tokens: 4000,
+        max_tokens: maxTokens,
       },
       {
         headers: {
@@ -509,6 +509,45 @@ export async function summarizeWorldState(
   }
 
   return parsed;
+}
+
+// ===== 生成故事标题 =====
+export async function generateStoryTitle(
+  prompt: string,
+  style: StoryStyle
+): Promise<string> {
+  if (MOCK_MODE) {
+    return `${style}故事`;
+  }
+
+  const userPrompt = `你是一位专业的网文编辑。请根据以下故事设定，生成一个吸引人的网文标题（5-10个字）。
+
+故事设定：${prompt.substring(0, 200)}
+风格：${style}
+
+要求：
+1. 标题要有网文感，吸引点击
+2. 5-10个字，不要标点符号
+3. 只输出标题文字，不要任何解释或引号`;
+
+  try {
+    const raw = await callKimi(
+      [
+        { role: 'system', content: '你是一个专业的网文标题生成器。只输出标题文字，不加任何解释。' },
+        { role: 'user', content: userPrompt },
+      ],
+      0.9,
+      50
+    );
+    const title = raw.trim().replace(/[""''「」《》]/g, '').replace(/^\s*\d+\.\s*/, '').trim();
+    if (title.length >= 3 && title.length <= 15) {
+      return title;
+    }
+    return prompt.slice(0, 30).trim() + (prompt.length > 30 ? '…' : '');
+  } catch (err) {
+    console.error('Generate title error:', err);
+    return prompt.slice(0, 30).trim() + (prompt.length > 30 ? '…' : '');
+  }
 }
 
 // 随机设定文案：每个风格5个，共35个

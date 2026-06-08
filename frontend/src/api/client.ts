@@ -179,12 +179,14 @@ function mapBackendWorldState(
 }
 
 export async function createStory(payload: { prompt: string; genre: StoryGenre; lengthPreference?: string; title?: string }): Promise<Story> {
-  const title = payload.title || payload.prompt.slice(0, 30).trim() + (payload.prompt.length > 30 ? '…' : '');
-  const body: Record<string, string> = {
-    title,
+  const body: Record<string, string | undefined> = {
     setting: payload.prompt,
     style: GENRE_TO_STYLE[payload.genre],
   };
+  // 只有显式传了 title 才发给后端（如热门设定），否则让后端AI生成
+  if (payload.title) {
+    body.title = payload.title;
+  }
   if (payload.lengthPreference) {
     body.length_preference = payload.lengthPreference;
   }

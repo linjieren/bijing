@@ -14,15 +14,15 @@ const VALID_LENGTHS: StoryLength[] = ['short', 'medium', 'long'];
 // POST /api/stories — 创建新故事
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { title, setting, style, lengthPreference } = req.body;
+    let { title, setting, style, lengthPreference } = req.body;
     const user = req.currentUser;
 
     if (!user) {
       error(res, 401, 'UNAUTHORIZED', 'Missing anonymous user');
       return;
     }
-    if (!title || !setting || !style) {
-      error(res, 400, 'INVALID_INPUT', 'Missing required fields: title, setting, style');
+    if (!setting || !style) {
+      error(res, 400, 'INVALID_INPUT', 'Missing required fields: setting, style');
       return;
     }
     if (!VALID_STYLES.includes(style)) {
@@ -32,6 +32,11 @@ router.post('/', async (req: Request, res: Response) => {
     if (lengthPreference && !VALID_LENGTHS.includes(lengthPreference)) {
       error(res, 400, 'INVALID_LENGTH', `Length must be one of: ${VALID_LENGTHS.join(', ')}`);
       return;
+    }
+
+    // 如果没传标题，调用AI生成
+    if (!title) {
+      title = await aiService.generateStoryTitle(setting, style);
     }
 
     const story = await storyService.createStory(title, setting, style, user.id, lengthPreference);
