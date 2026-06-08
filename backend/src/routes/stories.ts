@@ -243,6 +243,9 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
       (chunk) => {
         res.write(`data: ${JSON.stringify({ type: 'content', chunk })}
 \n`);
+        if (typeof (res as any).flush === 'function') {
+          (res as any).flush();
+        }
       },
       story.length_preference || undefined,
       nextSequence,

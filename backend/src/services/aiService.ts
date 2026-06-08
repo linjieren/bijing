@@ -75,7 +75,7 @@ class KimiApiError extends Error {
   }
 }
 
-async function callKimi(messages: KimiMessage[], temperature = 0.8, maxTokens = 4000): Promise<string> {
+async function callKimi(messages: KimiMessage[], temperature = 0.8, maxTokens = 2000): Promise<string> {
   if (!KIMI_API_KEY) {
     throw new KimiApiError('KIMI_API_KEY not configured');
   }
@@ -142,7 +142,7 @@ export async function* callKimiStream(
         model: KIMI_MODEL,
         messages,
         temperature,
-        max_tokens: 4000,
+        max_tokens: 2000,
         stream: true,
       },
       {
@@ -277,9 +277,9 @@ export async function generateNextChapter(
       ? previousChapter.choices[userChoiceIndex]?.text || '继续故事'
       : '继续故事';
 
-    userPrompt += `上一章标题：${previousChapter.title}\n上一章内容概要：${previousChapter.content.substring(0, 500)}...\n\n用户的选择是："${choiceText}"\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择，续写下一章（约800-1200字），并更新世界状态。`;
+    userPrompt += `上一章标题：${previousChapter.title}\n上一章内容概要：${previousChapter.content.substring(0, 500)}...\n\n用户的选择是："${choiceText}"\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择，续写下一章（约400-600字），并更新世界状态。`;
   } else {
-    userPrompt += `这是故事的第一章（开场），约800-1200字。请根据设定展开故事。`;
+    userPrompt += `这是故事的第一章（开场），约400-600字。请根据设定展开故事。`;
   }
 
   // 注入篇幅节奏控制
@@ -370,7 +370,7 @@ export async function generateNextChapterStream(
     userPrompt += `\n\n${getPacingHint(lengthPreference, currentChapterNumber, maxChapters)}`;
   }
 
-  userPrompt += `\n\n**字数要求：严格控制在 800-1200 字之间。不得少于 800 字，不要超过 1500 字。**\n**节奏要求：${previousChapter ? '本章是故事的中间章节，请保持剧情推进，留有悬念，不要在此处完结。' : '作为开场，需要建立世界观、引入核心冲突，并埋下后续伏笔。'}**\n\n你必须严格按以下格式输出：\n\n1. 先写章节正文内容（精彩、有画面感、符合${style}风格）\n2. 正文结束后，单独一行输出分隔符：###META###\n3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：\n\n###META###\n{\n  "title": "章节标题",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 2-3 个有意义的分支选项\n2. 选项要引导故事往不同方向发展\n3. content 要写得精彩，有画面感，符合${style}风格，严格 800-1200 字\n4. worldState 要准确反映本章后的新状态\n5. 正文中不要出现emoji、特殊符号或不可读的字符，保持纯文字叙述
+  userPrompt += `\n\n**字数要求：严格控制在 400-600 字之间。不得少于 400 字，不要超过 800 字。**\n**节奏要求：${previousChapter ? '本章是故事的中间章节，请保持剧情推进，留有悬念，不要在此处完结。' : '作为开场，需要建立世界观、引入核心冲突，并埋下后续伏笔。'}**\n\n你必须严格按以下格式输出：\n\n1. 先写章节正文内容（精彩、有画面感、符合${style}风格）\n2. 正文结束后，单独一行输出分隔符：###META###\n3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：\n\n###META###\n{\n  "title": "章节标题",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 2-3 个有意义的分支选项\n2. 选项要引导故事往不同方向发展\n3. content 要写得精彩，有画面感，符合${style}风格，严格 400-600 字\n4. worldState 要准确反映本章后的新状态\n5. 正文中不要出现emoji、特殊符号或不可读的字符，保持纯文字叙述
 6. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 元数据的 storyTitle 字段中
 7. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记`;
 
