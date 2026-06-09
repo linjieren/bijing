@@ -280,13 +280,14 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
 \n`);
     res.end();
   } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
     console.error('Generate chapter error:', err);
     if (req.query.stream === 'true') {
-      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to generate chapter' })}
+      res.write(`data: ${JSON.stringify({ type: 'error', message: errorMessage })}
 \n`);
       res.end();
     } else {
-      error(res, 500, 'GENERATE_FAILED', 'Failed to generate chapter');
+      error(res, 500, 'GENERATE_FAILED', errorMessage);
     }
   }
 });
