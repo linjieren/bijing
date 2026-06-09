@@ -90,7 +90,7 @@ class KimiApiError extends Error {
   }
 }
 
-async function callKimi(messages: KimiMessage[], temperature = 0.8, maxTokens = 4000): Promise<string> {
+async function callKimi(messages: KimiMessage[], temperature = 0.8, maxTokens = 6000): Promise<string> {
   if (!KIMI_API_KEY) {
     throw new KimiApiError('KIMI_API_KEY not configured');
   }
@@ -157,7 +157,7 @@ export async function* callKimiStream(
         model: KIMI_MODEL,
         messages,
         temperature,
-        max_tokens: 4000,
+        max_tokens: 6000,
         stream: true,
       },
       {
@@ -292,9 +292,9 @@ export async function generateNextChapter(
       ? previousChapter.choices[userChoiceIndex]?.text || '继续故事'
       : '继续故事';
 
-    userPrompt += `上一章标题：${previousChapter.title}\n上一章内容概要：${previousChapter.content.substring(0, 500)}...\n\n用户的选择是："${choiceText}"\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择，续写下一章（严格 800-1200 字）。必须承接上一章剧情，推进主线冲突，在结尾留下强烈悬念。`;
+    userPrompt += `上一章标题：${previousChapter.title}\n上一章内容概要：${previousChapter.content.substring(0, 500)}...\n\n用户的选择是："${choiceText}"\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择，续写下一章（必须达到 800-1200 字）。必须承接上一章剧情，推进主线冲突，充分展开场景描写和人物对话，在结尾留下强烈悬念。`;
   } else {
-    userPrompt += `这是故事的第一章（开场），严格 800-1200 字。需要：1）建立完整的世界观和氛围；2）引入核心冲突和主要人物；3）埋下后续伏笔；4）在结尾处设置引人入胜的钩子。`;
+    userPrompt += `这是故事的第一章（开场），必须达到 800-1200 字。需要：1）建立完整的世界观和氛围；2）引入核心冲突和主要人物；3）埋下后续伏笔；4）在结尾处设置引人入胜的钩子。`;
   }
 
   // 注入篇幅节奏控制
@@ -386,7 +386,7 @@ export async function generateNextChapterStream(
     userPrompt += `\n\n${getPacingHint(lengthPreference, currentChapterNumber, maxChapters)}`;
   }
 
-  userPrompt += `\n\n**字数要求：严格控制在 800-1200 字之间。不得少于 800 字。**\n**节奏要求：${previousChapter ? '本章是故事的中间章节，必须做到：1）承接上一章的剧情和选择；2）推进主线冲突；3）在结尾处留下强烈悬念或新的危机，让读者迫不及待想看下一章。' : '作为开场，需要：1）建立完整的世界观和氛围；2）引入核心冲突和主要人物；3）埋下后续伏笔；4）在结尾处设置一个引人入胜的钩子。'}**\n\n你必须严格按以下格式输出：\n\n1. 先写章节正文内容（精彩、有画面感、符合${style}风格）\n2. 正文结束后，单独一行输出分隔符：###META###\n3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：\n\n###META###\n{\n  "title": "章节标题",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 3 个有意义的分支选项，每个选项必须导向剧情重大转折，不能是无关紧要的细节差异\n2. 选项要引导故事往根本不同的方向发展，让读者感受到选择的分量\n3. content 要写得精彩，有画面感，符合${style}风格，严格 800-1200 字\n4. worldState 要准确反映本章后的新状态\n5. 正文中绝对禁止出现 emoji、颜文字、特殊符号（如★、♪、❤等）或任何不可读的乱码字符，只使用标准中文标点\n6. 章节结尾必须留下悬念：可以是未解的谜团、突如其来的危机、人物关系的反转，或一个令人震惊的发现
+  userPrompt += `\n\n**字数要求：本章正文必须达到 800-1200 字。低于 800 字不符合要求，请充分展开场景描写、人物对话和心理活动。**\n**节奏要求：${previousChapter ? '本章是故事的中间章节，必须做到：1）承接上一章的剧情和选择；2）推进主线冲突；3）在结尾处留下强烈悬念或新的危机，让读者迫不及待想看下一章。' : '作为开场，需要：1）建立完整的世界观和氛围；2）引入核心冲突和主要人物；3）埋下后续伏笔；4）在结尾处设置一个引人入胜的钩子。'}**\n\n你必须严格按以下格式输出：\n\n1. 先写章节正文内容（精彩、有画面感、符合${style}风格）\n2. 正文结束后，单独一行输出分隔符：###META###\n3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：\n\n###META###\n{\n  "title": "章节标题",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 3 个有意义的分支选项，每个选项必须导向剧情重大转折，不能是无关紧要的细节差异\n2. 选项要引导故事往根本不同的方向发展，让读者感受到选择的分量\n3. content 要写得精彩，有画面感，符合${style}风格，严格 800-1200 字\n4. worldState 要准确反映本章后的新状态\n5. 正文中绝对禁止出现 emoji、颜文字、特殊符号（如★、♪、❤等）或任何不可读的乱码字符，只使用标准中文标点\n6. 章节结尾必须留下悬念：可以是未解的谜团、突如其来的危机、人物关系的反转，或一个令人震惊的发现
 7. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 元数据的 storyTitle 字段中
 8. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记`;
 
