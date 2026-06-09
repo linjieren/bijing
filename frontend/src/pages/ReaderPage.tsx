@@ -400,7 +400,7 @@ export default function ReaderPage() {
       </header>
 
       {/* Chapter Content */}
-      <main className="flex-1 px-5 py-6 overflow-y-auto">
+      <main className="flex-1 px-5 pt-6 pb-24 overflow-y-auto">
         <AnimatePresence mode="wait">
           <motion.div
             key={chapterKey}
