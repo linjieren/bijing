@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -22,6 +22,38 @@ const feedbackTypes = [
   { key: 'other', label: '其他', icon: HelpCircle },
 ] as const
 
+const STORAGE_KEY = 'bijing-feedback-position'
+
+interface Position {
+  x: number
+  y: number
+}
+
+function getDefaultPosition(): Position {
+  return { x: window.innerWidth - 64, y: window.innerHeight - 80 }
+}
+
+function loadPosition(): Position {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const pos = JSON.parse(raw) as Position
+      // 防止窗口大小变化后按钮飞出屏幕
+      const maxX = window.innerWidth - 48
+      const maxY = window.innerHeight - 48
+      return {
+        x: Math.min(Math.max(pos.x, 0), maxX),
+        y: Math.min(Math.max(pos.y, 0), maxY),
+      }
+    }
+  } catch { /* ignore */ }
+  return getDefaultPosition()
+}
+
+function savePosition(pos: Position) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(pos))
+}
+
 export default function FeedbackButton() {
   const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
@@ -32,7 +64,86 @@ export default function FeedbackButton() {
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const isReaderPage = location.pathname.startsWith('/reader/')
+
+  // Draggable state
+  const [position, setPosition] = useState<Position>(getDefaultPosition)
+  const [isDragging, setIsDragging] = useState(false)
+  const dragRef = useRef({
+    startX: 0,
+    startY: 0,
+    startPosX: 0,
+    startPosY: 0,
+    moved: false,
+  })
+
+  useEffect(() => {
+    setPosition(loadPosition())
+  }, [])
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    const el = e.currentTarget as HTMLElement
+    el.setPointerCapture(e.pointerId)
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startPosX: position.x,
+      startPosY: position.y,
+      moved: false,
+    }
+    setIsDragging(true)
+  }, [position.x, position.y])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging) return
+    const dx = e.clientX - dragRef.current.startX
+    const dy = e.clientY - dragRef.current.startY
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      dragRef.current.moved = true
+    }
+    const newX = dragRef.current.startPosX + dx
+    const newY = dragRef.current.startPosY + dy
+    const maxX = window.innerWidth - 48
+    const maxY = window.innerHeight - 48
+    const clamped = {
+      x: Math.min(Math.max(newX, 0), maxX),
+      y: Math.min(Math.max(newY, 0), maxY),
+    }
+    setPosition(clamped)
+  }, [isDragging])
+
+  const reset = useCallback(() => {
+    setType('bug')
+    setContent('')
+    setScreenshot(null)
+    setError('')
+    setSubmitted(false)
+  }, [])
+
+  const handlePointerUp = useCallback(() => {
+    setIsDragging(false)
+    savePosition(position)
+    if (!dragRef.current.moved) {
+      reset()
+      setIsOpen(true)
+    }
+  }, [position, reset])
+
+  useEffect(() => {
+    const onResize = () => {
+      setPosition((prev) => {
+        const maxX = window.innerWidth - 48
+        const maxY = window.innerHeight - 48
+        const next = {
+          x: Math.min(prev.x, maxX),
+          y: Math.min(prev.y, maxY),
+        }
+        savePosition(next)
+        return next
+      })
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const handleFileChange = useCallback(
     (file: File | null) => {
@@ -93,14 +204,6 @@ export default function FeedbackButton() {
     }
   }
 
-  const reset = () => {
-    setType('bug')
-    setContent('')
-    setScreenshot(null)
-    setError('')
-    setSubmitted(false)
-  }
-
   return (
     <>
       {/* Floating Button */}
@@ -108,14 +211,18 @@ export default function FeedbackButton() {
         <motion.button
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={() => {
-            reset()
-            setIsOpen(true)
+          style={{
+            position: 'fixed',
+            left: position.x,
+            top: position.y,
+            touchAction: 'none',
           }}
-          className={`fixed right-4 z-40 w-12 h-12 rounded-full bg-accent text-white shadow-lg
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          className={`z-40 w-12 h-12 rounded-full bg-accent text-white shadow-lg
                       flex items-center justify-center active:bg-accent-hover transition-colors
-                      ${isReaderPage ? 'bottom-4' : 'bottom-20'}`}
+                      ${isDragging ? 'cursor-grabbing scale-110' : 'cursor-grab'}`}
         >
           <MessageSquare size={20} />
         </motion.button>
