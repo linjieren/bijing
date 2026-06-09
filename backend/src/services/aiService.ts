@@ -267,6 +267,67 @@ function generateMockChapter(
   };
 }
 
+// ===== 构建故事档案（多章记忆 + 主线追踪） =====
+function buildStoryArchive(
+  recentChapters: Chapter[],
+  previousChapter: Chapter | null,
+  userChoiceIndex: number | null
+): string {
+  if (recentChapters.length === 0) return '';
+
+  let archive = '\n\n【故事档案】\n';
+
+  // 汇总已有关键事件和角色
+  const allEvents = new Set<string>();
+  const allCharacters = new Map<string, string>();
+  recentChapters.forEach((ch) => {
+    if (ch.world_state?.keyEvents) {
+      ch.world_state.keyEvents.forEach((e: string) => allEvents.add(e));
+    }
+    if (ch.world_state?.characters) {
+      ch.world_state.characters.forEach((c: { name: string; status: string }) => {
+        allCharacters.set(c.name, c.status);
+      });
+    }
+  });
+
+  if (allCharacters.size > 0) {
+    archive += '角色状态：\n';
+    allCharacters.forEach((status, name) => {
+      archive += `- ${name}：${status}\n`;
+    });
+  }
+
+  if (allEvents.size > 0) {
+    archive += '已发生的关键事件：\n';
+    Array.from(allEvents).forEach((e) => {
+      archive += `- ${e}\n`;
+    });
+  }
+
+  // 最近章节摘要
+  archive += '\n最近章节回顾：\n';
+  recentChapters.forEach((ch, idx) => {
+    const seq = idx + 1;
+    const summary = ch.content.substring(0, 300).replace(/\n/g, ' ');
+    archive += `${seq}. 《${ch.title}》：${summary}${ch.content.length > 300 ? '...' : ''}\n`;
+  });
+
+  if (previousChapter && userChoiceIndex !== null) {
+    const choiceText = previousChapter.choices[userChoiceIndex]?.text || '继续故事';
+    archive += `\n用户最新选择："${choiceText}"\n`;
+  }
+
+  return archive;
+}
+
+// ===== 字数统计（中文字符 + 英文单词） =====
+function countWords(text: string): number {
+  const cnChars = (text.match(/[一-鿿]/g) || []).length;
+  const enWords = (text.match(/[a-zA-Z]+/g) || []).length;
+  return cnChars + enWords;
+}
+
 // ===== 生成下一章 =====
 export async function generateNextChapter(
   storyTitle: string,
@@ -276,7 +337,8 @@ export async function generateNextChapter(
   userChoiceIndex: number | null,
   lengthPreference?: StoryLength,
   currentChapterNumber = 1,
-  maxChapters?: number
+  maxChapters?: number,
+  recentChapters: Chapter[] = []
 ): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState; isFinale: boolean; storyTitle?: string }> {
   if (MOCK_MODE) {
     const mock = generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
@@ -287,14 +349,16 @@ export async function generateNextChapter(
 
   let userPrompt = `你正在写一个互动式${style}网文。\n\n故事标题：${storyTitle}\n故事设定：${storySetting}\n风格要求：${styleDesc}\n\n`;
 
-  if (previousChapter) {
-    const choiceText = userChoiceIndex !== null
-      ? previousChapter.choices[userChoiceIndex]?.text || '继续故事'
-      : '继续故事';
+  // 注入故事档案（多章记忆）
+  const storyArchive = buildStoryArchive(recentChapters, previousChapter, userChoiceIndex);
+  if (storyArchive) {
+    userPrompt += storyArchive;
+  }
 
-    userPrompt += `上一章标题：${previousChapter.title}\n上一章内容概要：${previousChapter.content.substring(0, 500)}...\n\n用户的选择是："${choiceText}"\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择，续写下一章（必须达到 800-1200 字）。必须承接上一章剧情，推进主线冲突，充分展开场景描写和人物对话，在结尾留下强烈悬念。`;
+  if (previousChapter) {
+    userPrompt += `\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择和故事档案，续写下一章。`;
   } else {
-    userPrompt += `这是故事的第一章（开场），必须达到 800-1200 字。需要：1）建立完整的世界观和氛围；2）引入核心冲突和主要人物；3）埋下后续伏笔；4）在结尾处设置引人入胜的钩子。`;
+    userPrompt += `\n\n这是故事的第一章（开场）。`;
   }
 
   // 注入篇幅节奏控制
@@ -302,14 +366,9 @@ export async function generateNextChapter(
     userPrompt += `\n\n${getPacingHint(lengthPreference, currentChapterNumber, maxChapters)}`;
   }
 
-  userPrompt += `\n\n你必须严格按以下 JSON 格式输出，不要添加任何其他文字：\n\n{\n  "title": "章节标题",\n  "content": "章节正文内容...",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 3 个有意义的分支选项，每个选项必须导向剧情重大转折，不能是无关紧要的细节差异\n2. 选项要引导故事往根本不同的方向发展，让读者感受到选择的分量\n3. content 要写得精彩，有画面感，符合${style}风格\n4. worldState 要准确反映本章后的新状态
-5. 正文中绝对禁止出现 emoji、颜文字、特殊符号（如★、♪、❤等）或任何不可读的乱码字符，只使用标准中文标点
-6. 章节结尾必须留下悬念：可以是未解的谜团、突如其来的危机、人物关系的反转，或一个令人震惊的发现
-7. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 的 storyTitle 字段中
-8. 写完后请自检：如果正文不足 800 字，必须补充场景描写、对话或心理活动，直到达标`;
+  userPrompt += `\n\n【写作要求】\n1. 每章正文必须达到 800-1200 字，这是硬性要求。低于 800 字视为不合格。\n2. 必须严格遵循起承转合结构：\n   - 起：承接上文，交代本章开场情境（1-2段）\n   - 承：展开场景描写、人物互动、对话推进（占全文40%）\n   - 转：出现新的冲突、危机或重大发现（占全文30%）\n   - 合：本章暂时收束，但必须留下强烈悬念或新危机（占全文20%，结尾1-2段）\n3. 保持故事逻辑连贯：角色行为必须符合其性格设定，伏笔要回收或加深，不能出现剧情断层\n4. 增强可读性：多用具体描写而非抽象叙述，对话要有个性，心理活动要真实\n5. choices 必须提供 3 个有意义的分支选项，每个选项必须导向剧情重大转折\n6. 正文中绝对禁止出现 emoji、颜文字、特殊符号或任何不可读的乱码字符\n7. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 的 storyTitle 字段中\n8. 写完后请自检字数：如果正文不足 800 字，必须补充场景描写、对话或心理活动，直到达标\n\n你必须严格按以下 JSON 格式输出，不要添加任何其他文字：\n\n{\n  "title": "章节标题",\n  "content": "章节正文内容...",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}`;
 
-  const systemPrompt = `你是一个专业的互动式网文作家。**每章正文（不包括 ###META### 和 JSON 元数据）必须达到 800-1200 字，这是硬性要求，不得违反。**你擅长根据用户的设定和选择生成分支剧情。\n你的输出必须是严格的 JSON 格式，不要有任何 markdown 代码块标记或额外文字。\n确保 JSON 格式合法，可以直接被 JSON.parse 解析。
-正文只使用标准中文字符和中文标点（，。！？、：；""''），绝对禁止 emoji、颜文字、特殊符号或乱码字符。\n每章结尾必须留下悬念，让读者想看下一章。`;
+  const systemPrompt = `你是一个专业的互动式网文作家，擅长写长篇连载网文。你的每章输出必须严格达到 800-1200 字。\n你的写作风格：场景描写细腻具体，对话生动有个性，心理活动真实，情节推进有张力。\n你非常注重故事逻辑：角色行为前后一致，伏笔会回收，剧情不会出现断层或矛盾。\n你的输出必须是严格的 JSON 格式，不要有任何 markdown 代码块标记或额外文字。\n确保 JSON 格式合法，可以直接被 JSON.parse 解析。\n正文只使用标准中文字符和中文标点（，。！？、：；""''），绝对禁止 emoji、颜文字、特殊符号或乱码字符。\n每章结尾必须留下悬念，让读者迫不及待想看下一章。`;
 
   let rawResponse: string;
   try {
@@ -335,18 +394,51 @@ export async function generateNextChapter(
     throw new Error('AI response does not contain valid JSON');
   }
 
+  let title = sanitizeContent((parsed.title as string) || '未命名章节');
+  let content = sanitizeContent((parsed.content as string) || '');
+  let choices = (parsed.choices as ChoiceOption[]) || [];
+  let worldState = (parsed.worldState as WorldState) || {
+    characters: [],
+    keyEvents: [],
+    currentScene: '',
+    atmosphere: '',
+  };
+
+  // 续写兜底：如果字数不足，自动请求AI继续写
+  let wordCount = countWords(content);
+  let continuationAttempts = 0;
+  const MAX_CONTINUATION_ATTEMPTS = 2;
+  const MIN_WORDS = 600;
+
+  while (wordCount < MIN_WORDS && continuationAttempts < MAX_CONTINUATION_ATTEMPTS && !isFinale) {
+    continuationAttempts++;
+    console.log(`Chapter too short (${wordCount} words), requesting continuation (attempt ${continuationAttempts})...`);
+
+    const continuePrompt = `你正在续写以下互动式网文章节。请继续写下去，保持原有风格和故事连贯。\n\n已写内容：\n${content}\n\n要求：\n1. 继续推进剧情，不要重复已写内容\n2. 补充场景描写、对话或心理活动\n3. 续写部分也必须在结尾留下悬念\n4. 只输出续写的正文内容，不要输出 JSON 元数据\n5. 绝对禁止出现 emoji、颜文字、特殊符号或乱码字符`;
+
+    try {
+      const continuationRaw = await callKimi([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: continuePrompt },
+      ]);
+      const continuedContent = sanitizeContent(continuationRaw.replace(/###FINALE###/g, '').trim());
+      if (continuedContent && continuedContent.length > 20) {
+        content = content + '\n\n' + continuedContent;
+        wordCount = countWords(content);
+      }
+    } catch (err) {
+      console.error('Continuation failed:', err);
+      break;
+    }
+  }
+
   return {
-    title: sanitizeContent((parsed.title as string) || '未命名章节'),
-    content: sanitizeContent((parsed.content as string) || ''),
-    choices: (parsed.choices as ChoiceOption[]) || [],
-    worldState: (parsed.worldState as WorldState) || {
-      characters: [],
-      keyEvents: [],
-      currentScene: '',
-      atmosphere: '',
-    },
+    title,
+    content,
+    choices,
+    worldState,
     isFinale,
-    storyTitle: sanitizeContent((parsed.storyTitle as string) || undefined),
+    storyTitle: parsed.storyTitle ? sanitizeContent(parsed.storyTitle as string) : undefined,
   };
 }
 
@@ -360,7 +452,8 @@ export async function generateNextChapterStream(
   onChunk: (chunk: string) => void,
   lengthPreference?: StoryLength,
   currentChapterNumber = 1,
-  maxChapters?: number
+  maxChapters?: number,
+  recentChapters: Chapter[] = []
 ): Promise<{ title: string; content: string; choices: ChoiceOption[]; worldState: WorldState; isFinale: boolean; storyTitle?: string }> {
   if (MOCK_MODE) {
     const result = generateMockChapter(storyTitle, storySetting, style, previousChapter, userChoiceIndex);
@@ -372,14 +465,16 @@ export async function generateNextChapterStream(
 
   let userPrompt = `你正在写一个互动式${style}网文。\n\n故事标题：${storyTitle}\n故事设定：${storySetting}\n风格要求：${styleDesc}\n\n`;
 
-  if (previousChapter) {
-    const choiceText = userChoiceIndex !== null
-      ? previousChapter.choices[userChoiceIndex]?.text || '继续故事'
-      : '继续故事';
+  // 注入故事档案（多章记忆）
+  const storyArchive = buildStoryArchive(recentChapters, previousChapter, userChoiceIndex);
+  if (storyArchive) {
+    userPrompt += storyArchive;
+  }
 
-    userPrompt += `上一章标题：${previousChapter.title}\n上一章内容概要：${previousChapter.content.substring(0, 500)}...\n\n用户的选择是："${choiceText}"\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择，续写下一章。`;
+  if (previousChapter) {
+    userPrompt += `\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择和故事档案，续写下一章。`;
   } else {
-    userPrompt += `这是故事的第一章（开场）。请根据设定展开故事。`;
+    userPrompt += `\n\n这是故事的第一章（开场）。请根据设定展开故事。`;
   }
 
   // 注入篇幅节奏控制（流式模式也支持）
@@ -387,12 +482,9 @@ export async function generateNextChapterStream(
     userPrompt += `\n\n${getPacingHint(lengthPreference, currentChapterNumber, maxChapters)}`;
   }
 
-  userPrompt += `\n\n**字数要求：本章正文（不包括 ###META### 和 JSON 元数据）必须达到 800-1200 字。低于 800 字不符合要求，请充分展开场景描写、人物对话和心理活动。**\n**节奏要求：${previousChapter ? '本章是故事的中间章节，必须做到：1）承接上一章的剧情和选择；2）推进主线冲突；3）在结尾处留下强烈悬念或新的危机，让读者迫不及待想看下一章。' : '作为开场，需要：1）建立完整的世界观和氛围；2）引入核心冲突和主要人物；3）埋下后续伏笔；4）在结尾处设置一个引人入胜的钩子。'}**\n\n你必须严格按以下格式输出：\n\n1. 先写章节正文内容（精彩、有画面感、符合${style}风格）\n2. 正文结束后，单独一行输出分隔符：###META###\n3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：\n\n###META###\n{\n  "title": "章节标题",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 3 个有意义的分支选项，每个选项必须导向剧情重大转折，不能是无关紧要的细节差异\n2. 选项要引导故事往根本不同的方向发展，让读者感受到选择的分量\n3. content 要写得精彩，有画面感，符合${style}风格\n4. worldState 要准确反映本章后的新状态\n5. 正文中绝对禁止出现 emoji、颜文字、特殊符号（如★、♪、❤等）或任何不可读的乱码字符，只使用标准中文标点\n6. 章节结尾必须留下悬念：可以是未解的谜团、突如其来的危机、人物关系的反转，或一个令人震惊的发现
-7. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 元数据的 storyTitle 字段中
-8. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记
-9. 写完后请自检：如果正文不足 800 字，必须补充场景描写、对话或心理活动，直到达标`;
+  userPrompt += `\n\n【写作要求】\n1. 每章正文必须达到 800-1200 字，这是硬性要求。低于 800 字视为不合格。\n2. 必须严格遵循起承转合结构：\n   - 起：承接上文，交代本章开场情境（1-2段）\n   - 承：展开场景描写、人物互动、对话推进（占全文40%）\n   - 转：出现新的冲突、危机或重大发现（占全文30%）\n   - 合：本章暂时收束，但必须留下强烈悬念或新危机（占全文20%，结尾1-2段）\n3. 保持故事逻辑连贯：角色行为必须符合其性格设定，伏笔要回收或加深，不能出现剧情断层\n4. 增强可读性：多用具体描写而非抽象叙述，对话要有个性，心理活动要真实\n5. choices 必须提供 3 个有意义的分支选项，每个选项必须导向剧情重大转折\n6. 正文中绝对禁止出现 emoji、颜文字、特殊符号或任何不可读的乱码字符\n7. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 元数据的 storyTitle 字段中\n8. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记\n9. 写完后请自检字数：如果正文不足 800 字，必须补充场景描写、对话或心理活动，直到达标\n\n你必须严格按以下格式输出：\n\n1. 先写章节正文内容（精彩、有画面感、符合${style}风格）\n2. 正文结束后，单独一行输出分隔符：###META###\n3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：\n\n###META###\n{\n  "title": "章节标题",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}`;
 
-  const systemPrompt = `你是一个专业的互动式网文作家。**每章正文（不包括 ###META### 和 JSON 元数据）必须达到 800-1200 字，这是硬性要求，不得违反。**你擅长根据用户的设定和选择生成分支剧情。\n请严格按照要求的格式输出：先写正文，然后换行输出 ###META###，再输出 JSON 元数据。\n确保 JSON 格式合法。\n正文只使用标准中文字符和中文标点（，。！？、：；""''），绝对禁止 emoji、颜文字、特殊符号或乱码字符。\n元数据中的 title 字段必须有实际内容，不能为空。\n每章结尾必须留下悬念，让读者想看下一章。`;
+  const systemPrompt = `你是一个专业的互动式网文作家，擅长写长篇连载网文。你的每章输出必须严格达到 800-1200 字。\n你的写作风格：场景描写细腻具体，对话生动有个性，心理活动真实，情节推进有张力。\n你非常注重故事逻辑：角色行为前后一致，伏笔会回收，剧情不会出现断层或矛盾。\n请严格按照要求的格式输出：先写正文，然后换行输出 ###META###，再输出 JSON 元数据。\n确保 JSON 格式合法。\n正文只使用标准中文字符和中文标点（，。！？、：；""''），绝对禁止 emoji、颜文字、特殊符号或乱码字符。\n元数据中的 title 字段必须有实际内容，不能为空。\n每章结尾必须留下悬念，让读者迫不及待想看下一章。`;
 
   let accumulated = '';
   let contentEmitted = 0;

@@ -4,7 +4,7 @@ import * as storyService from '../services/storyService';
 import * as chapterService from '../services/chapterService';
 import * as likeService from '../services/likeService';
 import * as aiService from '../services/aiService';
-import { StoryStyle, StoryLength } from '../types';
+import { StoryStyle, StoryLength, Chapter } from '../types';
 
 const router = Router();
 
@@ -184,6 +184,9 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
       }
     }
 
+    // 获取最近3章作为故事档案
+    const recentChapters: Chapter[] = (story.chapters || []).slice(-3);
+
     const currentChapterCount = story.chapters?.length || 0;
     const nextSequence = currentChapterCount + 1;
 
@@ -197,7 +200,8 @@ router.post('/:id/chapters', async (req: Request, res: Response) => {
         userChoice !== undefined ? parseInt(userChoice) : null,
         story.length_preference || undefined,
         nextSequence,
-        story.max_chapters || undefined
+        story.max_chapters || undefined,
+        recentChapters
       );
 
       // 检测完结：AI 标记 或 硬完结（章节数达到上限）

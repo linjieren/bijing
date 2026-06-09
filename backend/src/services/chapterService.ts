@@ -50,3 +50,11 @@ export async function getNextSequence(storyId: string): Promise<number> {
   );
   return (result.rows[0].max || 0) + 1;
 }
+
+export async function getRecentChapters(storyId: string, limit: number = 3): Promise<Chapter[]> {
+  const result = await query<Chapter>(
+    'SELECT * FROM chapters WHERE story_id = $1 ORDER BY sequence DESC LIMIT $2',
+    [storyId, limit]
+  );
+  return result.rows.reverse();
+}
