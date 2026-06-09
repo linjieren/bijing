@@ -14,6 +14,21 @@ const MIN_INTERVAL_MS = 500; // 最小请求间隔 500ms
 // 是否启用 mock 模式（无 API key 时使用）
 const MOCK_MODE = !KIMI_API_KEY || KIMI_API_KEY === 'your-kimi-api-key';
 
+// ===== 内容清理（移除 emoji、乱码和不可读字符） =====
+function sanitizeContent(text: string): string {
+  // 移除 emoji 及其变体选择器
+  text = text.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu, '');
+  // 移除替换字符（�）
+  text = text.replace(/�/g, '');
+  // 移除零宽字符和其他不可见控制字符
+  text = text.replace(/[​-‏﻿⁠-⁯]/g, '');
+  // 移除控制字符（保留换行和制表符）
+  text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  // 清理连续的空行
+  text = text.replace(/\n{3,}/g, '\n\n');
+  return text.trim();
+}
+
 // ===== 安全的 JSON 解析（处理 LLM 常见输出问题） =====
 function safeParseJSON(raw: string): unknown {
   raw = raw.trim();
@@ -75,7 +90,7 @@ class KimiApiError extends Error {
   }
 }
 
-async function callKimi(messages: KimiMessage[], temperature = 0.8, maxTokens = 2000): Promise<string> {
+async function callKimi(messages: KimiMessage[], temperature = 0.8, maxTokens = 4000): Promise<string> {
   if (!KIMI_API_KEY) {
     throw new KimiApiError('KIMI_API_KEY not configured');
   }
@@ -142,7 +157,7 @@ export async function* callKimiStream(
         model: KIMI_MODEL,
         messages,
         temperature,
-        max_tokens: 2000,
+        max_tokens: 4000,
         stream: true,
       },
       {
@@ -277,9 +292,9 @@ export async function generateNextChapter(
       ? previousChapter.choices[userChoiceIndex]?.text || '继续故事'
       : '继续故事';
 
-    userPrompt += `上一章标题：${previousChapter.title}\n上一章内容概要：${previousChapter.content.substring(0, 500)}...\n\n用户的选择是："${choiceText}"\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择，续写下一章（约400-600字），并更新世界状态。`;
+    userPrompt += `上一章标题：${previousChapter.title}\n上一章内容概要：${previousChapter.content.substring(0, 500)}...\n\n用户的选择是："${choiceText}"\n\n当前世界状态：\n${JSON.stringify(previousChapter.world_state, null, 2)}\n\n请根据用户的选择，续写下一章（严格 800-1200 字）。必须承接上一章剧情，推进主线冲突，在结尾留下强烈悬念。`;
   } else {
-    userPrompt += `这是故事的第一章（开场），约400-600字。请根据设定展开故事。`;
+    userPrompt += `这是故事的第一章（开场），严格 800-1200 字。需要：1）建立完整的世界观和氛围；2）引入核心冲突和主要人物；3）埋下后续伏笔；4）在结尾处设置引人入胜的钩子。`;
   }
 
   // 注入篇幅节奏控制
@@ -287,12 +302,13 @@ export async function generateNextChapter(
     userPrompt += `\n\n${getPacingHint(lengthPreference, currentChapterNumber, maxChapters)}`;
   }
 
-  userPrompt += `\n\n你必须严格按以下 JSON 格式输出，不要添加任何其他文字：\n\n{\n  "title": "章节标题",\n  "content": "章节正文内容...",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 2-3 个有意义的分支选项\n2. 选项要引导故事往不同方向发展\n3. content 要写得精彩，有画面感，符合${style}风格\n4. worldState 要准确反映本章后的新状态
-5. 正文中不要出现emoji、特殊符号或不可读的字符，保持纯文字叙述
-6. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 的 storyTitle 字段中`;
+  userPrompt += `\n\n你必须严格按以下 JSON 格式输出，不要添加任何其他文字：\n\n{\n  "title": "章节标题",\n  "content": "章节正文内容...",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 3 个有意义的分支选项，每个选项必须导向剧情重大转折，不能是无关紧要的细节差异\n2. 选项要引导故事往根本不同的方向发展，让读者感受到选择的分量\n3. content 要写得精彩，有画面感，符合${style}风格，严格 800-1200 字\n4. worldState 要准确反映本章后的新状态
+5. 正文中绝对禁止出现 emoji、颜文字、特殊符号（如★、♪、❤等）或任何不可读的乱码字符，只使用标准中文标点
+6. 章节结尾必须留下悬念：可以是未解的谜团、突如其来的危机、人物关系的反转，或一个令人震惊的发现
+7. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 的 storyTitle 字段中`;
 
   const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。\n你的输出必须是严格的 JSON 格式，不要有任何 markdown 代码块标记或额外文字。\n确保 JSON 格式合法，可以直接被 JSON.parse 解析。
-正文中不要出现emoji、特殊符号或不可读的字符。`;
+正文只使用标准中文字符和中文标点（，。！？、：；""''），绝对禁止 emoji、颜文字、特殊符号或乱码字符。\n每章结尾必须留下悬念，让读者想看下一章。`;
 
   let rawResponse: string;
   try {
@@ -319,8 +335,8 @@ export async function generateNextChapter(
   }
 
   return {
-    title: (parsed.title as string) || '未命名章节',
-    content: (parsed.content as string) || '',
+    title: sanitizeContent((parsed.title as string) || '未命名章节'),
+    content: sanitizeContent((parsed.content as string) || ''),
     choices: (parsed.choices as ChoiceOption[]) || [],
     worldState: (parsed.worldState as WorldState) || {
       characters: [],
@@ -329,7 +345,7 @@ export async function generateNextChapter(
       atmosphere: '',
     },
     isFinale,
-    storyTitle: (parsed.storyTitle as string) || undefined,
+    storyTitle: sanitizeContent((parsed.storyTitle as string) || undefined),
   };
 }
 
@@ -370,11 +386,11 @@ export async function generateNextChapterStream(
     userPrompt += `\n\n${getPacingHint(lengthPreference, currentChapterNumber, maxChapters)}`;
   }
 
-  userPrompt += `\n\n**字数要求：严格控制在 400-600 字之间。不得少于 400 字，不要超过 800 字。**\n**节奏要求：${previousChapter ? '本章是故事的中间章节，请保持剧情推进，留有悬念，不要在此处完结。' : '作为开场，需要建立世界观、引入核心冲突，并埋下后续伏笔。'}**\n\n你必须严格按以下格式输出：\n\n1. 先写章节正文内容（精彩、有画面感、符合${style}风格）\n2. 正文结束后，单独一行输出分隔符：###META###\n3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：\n\n###META###\n{\n  "title": "章节标题",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 2-3 个有意义的分支选项\n2. 选项要引导故事往不同方向发展\n3. content 要写得精彩，有画面感，符合${style}风格，严格 400-600 字\n4. worldState 要准确反映本章后的新状态\n5. 正文中不要出现emoji、特殊符号或不可读的字符，保持纯文字叙述
-6. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 元数据的 storyTitle 字段中
-7. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记`;
+  userPrompt += `\n\n**字数要求：严格控制在 800-1200 字之间。不得少于 800 字。**\n**节奏要求：${previousChapter ? '本章是故事的中间章节，必须做到：1）承接上一章的剧情和选择；2）推进主线冲突；3）在结尾处留下强烈悬念或新的危机，让读者迫不及待想看下一章。' : '作为开场，需要：1）建立完整的世界观和氛围；2）引入核心冲突和主要人物；3）埋下后续伏笔；4）在结尾处设置一个引人入胜的钩子。'}**\n\n你必须严格按以下格式输出：\n\n1. 先写章节正文内容（精彩、有画面感、符合${style}风格）\n2. 正文结束后，单独一行输出分隔符：###META###\n3. 然后输出 JSON 格式的元数据（不要 markdown 代码块）：\n\n###META###\n{\n  "title": "章节标题",\n  "choices": [\n    { "id": "1", "text": "选项1描述" },\n    { "id": "2", "text": "选项2描述" },\n    { "id": "3", "text": "选项3描述" }\n  ],\n  "worldState": {\n    "characters": [\n      { "name": "角色名", "relationship": "与主角关系", "status": "当前状态" }\n    ],\n    "keyEvents": ["关键事件1", "关键事件2"],\n    "currentScene": "当前场景描述",\n    "atmosphere": "当前氛围"\n  }\n}\n\n要求：\n1. choices 必须提供 3 个有意义的分支选项，每个选项必须导向剧情重大转折，不能是无关紧要的细节差异\n2. 选项要引导故事往根本不同的方向发展，让读者感受到选择的分量\n3. content 要写得精彩，有画面感，符合${style}风格，严格 800-1200 字\n4. worldState 要准确反映本章后的新状态\n5. 正文中绝对禁止出现 emoji、颜文字、特殊符号（如★、♪、❤等）或任何不可读的乱码字符，只使用标准中文标点\n6. 章节结尾必须留下悬念：可以是未解的谜团、突如其来的危机、人物关系的反转，或一个令人震惊的发现
+7. 如果是第一章（开场），请同时给整个故事起一个吸引人的标题，放在 JSON 元数据的 storyTitle 字段中
+8. 正文和元数据之间必须用 ###META### 分隔，不要有任何其他标记`;
 
-  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。\n请严格按照要求的格式输出：先写正文，然后换行输出 ###META###，再输出 JSON 元数据。\n确保 JSON 格式合法。\n正文中不要出现emoji、特殊符号或不可读的字符。\n元数据中的 title 字段必须有实际内容，不能为空。`;
+  const systemPrompt = `你是一个专业的互动式网文作家。你擅长根据用户的设定和选择生成分支剧情。\n请严格按照要求的格式输出：先写正文，然后换行输出 ###META###，再输出 JSON 元数据。\n确保 JSON 格式合法。\n正文只使用标准中文字符和中文标点（，。！？、：；""''），绝对禁止 emoji、颜文字、特殊符号或乱码字符。\n元数据中的 title 字段必须有实际内容，不能为空。\n每章结尾必须留下悬念，让读者想看下一章。`;
 
   let accumulated = '';
   let contentEmitted = 0;
@@ -484,7 +500,7 @@ export async function generateNextChapterStream(
     }
   }
 
-  return { title, content, choices, worldState, isFinale, storyTitle: generatedStoryTitle };
+  return { title: sanitizeContent(title), content: sanitizeContent(content), choices, worldState, isFinale, storyTitle: generatedStoryTitle ? sanitizeContent(generatedStoryTitle) : undefined };
 }
 
 // ===== 世界状态总结 =====
