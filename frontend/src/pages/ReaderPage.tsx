@@ -451,7 +451,7 @@ export default function ReaderPage() {
           >
             {/* Chapter title */}
             <h1 className="text-lg font-bold text-text-primary mb-2 text-center">
-              <span className="text-accent mr-2">第{toChineseNumber(activeChapter.chapterNumber)}章</span>
+              <span className="mr-2">第{toChineseNumber(activeChapter.chapterNumber)}章</span>
               <span>{activeChapter.title}</span>
             </h1>
 
