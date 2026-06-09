@@ -85,15 +85,13 @@ export default function WorldDrawer({ isOpen, onClose, worldState }: WorldDrawer
                   <Clock size={16} className="text-accent" />
                   <h3 className="text-sm font-medium text-text-secondary">事件时间线</h3>
                 </div>
-                <div className="relative pl-6">
-                  {/* Vertical line */}
-                  <div className="absolute left-[11px] top-2 bottom-2 w-px bg-border" />
-                  <div className="space-y-3">
-                    {worldState.timeline.map((event, idx) => (
-                      <div key={event.id} className="relative flex gap-3">
-                        {/* Dot */}
+                <div className="space-y-0">
+                  {worldState.timeline.map((event, idx) => (
+                    <div key={event.id} className="flex gap-3">
+                      {/* Timeline: dot + line */}
+                      <div className="relative flex flex-col items-center w-4">
                         <div
-                          className={`absolute left-[-13px] top-1 w-[15px] h-[15px] rounded-full border-2 flex items-center justify-center shrink-0 ${
+                          className={`w-[15px] h-[15px] rounded-full border-2 flex items-center justify-center shrink-0 z-10 ${
                             idx === worldState.timeline.length - 1
                               ? 'border-accent bg-accent'
                               : 'border-border bg-bg-elevated'
@@ -103,13 +101,17 @@ export default function WorldDrawer({ isOpen, onClose, worldState }: WorldDrawer
                             <div className="w-1.5 h-1.5 rounded-full bg-white" />
                           )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-[10px] text-text-muted">{event.timestamp}</span>
-                          <p className="text-xs text-text-secondary mt-0.5">{event.event}</p>
-                        </div>
+                        {idx !== worldState.timeline.length - 1 && (
+                          <div className="flex-1 w-px bg-border -mt-0.5 -mb-0.5" />
+                        )}
                       </div>
-                    ))}
-                  </div>
+                      {/* Content */}
+                      <div className="flex-1 min-w-0 pb-4">
+                        <span className="text-[10px] text-text-muted">{event.timestamp}</span>
+                        <p className="text-xs text-text-secondary mt-0.5">{event.event}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </section>
             </div>
