@@ -22,6 +22,17 @@ import { getStoryDetail, generateChapterStream, toggleLike, toggleBookmark, crea
 import { track } from '../utils/tracker'
 import type { Chapter, WorldState, Story } from '../types'
 
+function toChineseNumber(num: number): string {
+  const chars = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九']
+  if (num <= 10) {
+    if (num === 10) return '十'
+    return chars[num]
+  }
+  if (num < 20) return '十' + (num % 10 === 0 ? '' : chars[num % 10])
+  if (num % 10 === 0) return chars[Math.floor(num / 10)] + '十'
+  return chars[Math.floor(num / 10)] + '十' + chars[num % 10]
+}
+
 export default function ReaderPage() {
   const { storyId } = useParams()
   const navigate = useNavigate()
@@ -401,10 +412,10 @@ export default function ReaderPage() {
           </button>
 
           <div className="flex flex-col items-center max-w-[55%]">
-            <span className="text-sm font-medium text-text-primary truncate w-full text-center leading-tight">
+            <span className="text-[10px] text-text-tertiary truncate w-full text-center leading-tight">
               {story?.title || '笔境'}
             </span>
-            <span className="text-[10px] text-text-tertiary tracking-wide">
+            <span className="text-xs text-text-secondary tracking-wide">
               第 {activeChapter.chapterNumber} 章
             </span>
           </div>
@@ -440,7 +451,8 @@ export default function ReaderPage() {
           >
             {/* Chapter title */}
             <h1 className="text-lg font-bold text-text-primary mb-2 text-center">
-              {activeChapter.title}
+              <span className="text-accent mr-2">第{toChineseNumber(activeChapter.chapterNumber)}章</span>
+              <span>{activeChapter.title}</span>
             </h1>
 
 
