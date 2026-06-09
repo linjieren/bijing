@@ -405,6 +405,13 @@ export async function createShareLink(storyId: string): Promise<{ shortUrl: stri
 
 // ===== 反馈 API =====
 
+export async function rollbackToChapter(storyId: string, chapterId: string): Promise<void> {
+  await request(`/api/stories/${storyId}/regenerate`, {
+    method: 'POST',
+    body: JSON.stringify({ chapterId }),
+  });
+}
+
 export async function submitFeedback(payload: {
   type: string;
   content: string;

@@ -18,7 +18,7 @@ import { useAuthStore } from '../stores/authStore'
 import WorldDrawer from '../components/WorldDrawer'
 import LoginModal from '../components/LoginModal'
 import StoryIntroAnimation from '../components/StoryIntroAnimation'
-import { getStoryDetail, generateChapterStream, toggleLike, toggleBookmark, createShareLink } from '../api/client'
+import { getStoryDetail, generateChapterStream, toggleLike, toggleBookmark, createShareLink, rollbackToChapter } from '../api/client'
 import { track } from '../utils/tracker'
 import type { Chapter, WorldState, Story } from '../types'
 
@@ -42,6 +42,8 @@ export default function ReaderPage() {
   const [chapterKey, setChapterKey] = useState(0)
   const [chapter, setChapter] = useState<Chapter | null>(null)
   const [previewChapter, setPreviewChapter] = useState<Chapter | null>(null)
+  const [allChapters, setAllChapters] = useState<Chapter[]>([])
+  const [currentChapterIndex, setCurrentChapterIndex] = useState(0)
   const [world, setWorld] = useState<WorldState | null>(null)
   const [story, setStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
@@ -80,6 +82,8 @@ export default function ReaderPage() {
         setLikes(s.likes || 0)
         setIsCompleted(s.status === 'completed')
 
+        setAllChapters(chapters)
+
         if (chapters.length === 0) {
           // Generate first chapter with streaming
           setGenerating(true)
@@ -107,6 +111,8 @@ export default function ReaderPage() {
           )
           if (cancelled) return
 
+          setAllChapters([ch])
+          setCurrentChapterIndex(0)
           setChapter(ch)
           setWorld(ws)
           setCurrentChapter(ch)
@@ -118,6 +124,7 @@ export default function ReaderPage() {
           track('chapter_read', { storyId: sid, chapterNumber: ch.chapterNumber })
         } else {
           const last = chapters[chapters.length - 1]
+          setCurrentChapterIndex(chapters.length - 1)
           setChapter(last)
           const ws: WorldState = {
             storyId: sid,
@@ -222,6 +229,8 @@ export default function ReaderPage() {
           }
         )
 
+        setAllChapters((prev) => [...prev, nextCh])
+        setCurrentChapterIndex((prev) => prev + 1)
         setChapter(nextCh)
         setWorld(nextWs)
         setCurrentChapter(nextCh)
@@ -248,9 +257,32 @@ export default function ReaderPage() {
     [storyId, chapter, generating, setCurrentChapter, setWorldState, updateProgress]
   )
 
-  const handleGoBack = useCallback(() => {
-    navigate(-1)
-  }, [navigate])
+  const handleGoBack = useCallback(async () => {
+    if (!storyId) return
+    if (currentChapterIndex > 0) {
+      const prevIndex = currentChapterIndex - 1
+      const prevChapter = allChapters[prevIndex]
+
+      // 调用后端回退API，删除后续章节
+      try {
+        await rollbackToChapter(storyId, prevChapter.id)
+      } catch (err) {
+        console.error('Rollback failed:', err)
+      }
+
+      // 前端状态更新
+      setAllChapters((prev) => prev.slice(0, prevIndex + 1))
+      setCurrentChapterIndex(prevIndex)
+      setChapter(prevChapter)
+      setChapterKey((k) => k + 1)
+      skipTypewriterRef.current = true
+      setShowChoices(true)
+      setIsCompleted(false)
+      setError('')
+    } else {
+      navigate('/')
+    }
+  }, [storyId, currentChapterIndex, allChapters, navigate])
 
   const handleLike = useCallback(async () => {
     if (!storyId) return
@@ -311,7 +343,7 @@ export default function ReaderPage() {
     setPendingAction(null)
   }, [pendingAction, handleLike, handleBookmark])
 
-  const activeChapter = previewChapter || chapter
+  const activeChapter = previewChapter || allChapters[currentChapterIndex] || chapter
   const maxChapters = story?.maxChapters || 12
   const progress = activeChapter ? (activeChapter.chapterNumber / maxChapters) * 100 : 0
 
